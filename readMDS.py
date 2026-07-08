@@ -19,13 +19,30 @@ def readmds(shot, time):
     # Read geqdsk from MDS+ server
     # TREE  = 'pefitrt_east'
     TREE  = 'efit_east'
-    conn.openTree(TREE, shot)
-    g_times = conn.get(r'data(\GTIME)').data()  # All time slices for gfile on MDS+
-    timeid  = np.argmin(abs(g_times - time))
-    print('timeid:',g_times[timeid])
-    real_time = g_times[timeid]
-    gg          = geqdsk.read_from_MDS(conn, timeid)
-    gg['head']  = f'{shot}_{time}'
+    try:
+        conn.openTree(TREE, shot)
+    except Exception as e:
+        raise ConnectionError(
+            f'Shot {shot}: efit_east tree not available on MDSplus ({e}). '
+            f'This shot has no EFIT equilibrium data.'
+        ) from e
+
+    g_times = np.asarray(conn.get(r'data(\GTIME)').data(), dtype=np.float64).flatten()
+    if len(g_times) == 0:
+        conn.closeTree(TREE, shot)
+        raise ValueError(
+            f'Shot {shot} @ {time}s: efit_east tree has zero gfile time slices.'
+        )
+
+    timeid = np.argmin(abs(g_times - time))
+    real_time = float(g_times[timeid])
+    time_gap = abs(real_time - time)
+    if time_gap > 0.5:
+        print(f'⚠ Shot {shot}: gfile time {real_time:.3f}s is {time_gap*1000:.0f}ms away from requested {time:.3f}s')
+
+    print('timeid:', g_times[timeid])
+    gg = geqdsk.read_from_MDS(conn, timeid)
+    gg['head'] = f'{shot}_{time}'
     conn.closeTree(TREE, shot)
 
     # filename = f"{shot}_{time}_gfile"

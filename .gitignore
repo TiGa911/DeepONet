@@ -6,3 +6,10 @@ __pycache__/
 *.swp
 *.swo
 results/
+result/
+paper/paper_results/
+paper/_ablation_tmp/
+debug_fit/
+*.pptx
+*.log
+137951_csv/

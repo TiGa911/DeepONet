@@ -162,13 +162,28 @@ def process_time_point(args):
             
             # 平衡文件处理
             conn = Connection('202.127.204.42')
-            conn.openTree('efit_east', shot)
-            gg = geqdsk.read_from_MDS(conn, time_val)
+            try:
+                conn.openTree('efit_east', shot)
+                g_times = np.asarray(conn.get(r'data(\GTIME)').data(), dtype=np.float64).flatten()
+                if len(g_times) == 0:
+                    raise ValueError(f'efit_east tree has zero gfile time slices for shot {shot}')
+                timeid = np.argmin(abs(g_times - time_val))
+                gg = geqdsk.read_from_MDS(conn, timeid)
+                conn.closeTree('efit_east', shot)
+            except Exception as gfile_err:
+                try:
+                    conn.closeTree('efit_east', shot)
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    f'Shot {shot} @ {time_val}s: gfile unavailable from MDSplus efit_east tree.'
+                ) from gfile_err
             geqdsk.save(gg, os.path.join(onetwo_result_dir, "g0_input"))
-            conn.closeTree('efit_east', shot)
             
             # 运行 ONETWO
-            subprocess.run(["onetwo_129_201"], cwd=onetwo_result_dir, check=True, capture_output=True)
+            _env = os.environ.copy()
+            _env['LD_LIBRARY_PATH'] = '/usr/local/mdsplus/lib:/home/fusion/imd/onetwo5/lib:/home/fusion/imd/auto12/netcdf4.1.3/pgi-1410/lib:/home/fusion/imd/auto12/cfetr_bin/lib:/home/fusion/imd/auto12/hdf5/pgi-1410/lib:' + _env.get('LD_LIBRARY_PATH', '')
+            subprocess.run(["onetwo_129_201"], cwd=onetwo_result_dir, check=True, capture_output=True, env=_env)
             stats['onetwo'] = time.time() - t2
         except Exception as e:
             print(f'Fail at {time_val}s: {e}')

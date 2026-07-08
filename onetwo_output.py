@@ -173,6 +173,25 @@ def read_lhcd_data(filename):
 
 # 导入专为 ONETWO 流程封装的 readmds（与主流程 readMDS.py 不同）
 from readMDS_onetwo import readmds
+import traceback as _traceback
+
+# ONETWO 可执行文件路径（相对于脚本所在目录解析）
+_ONETWO_EXE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'onetwo_129_201')
+
+def _log_error(shot, time, stage, error_msg, exc_info=False):
+    os.makedirs(os.path.join("results", str(shot)), exist_ok=True)
+    log_path = os.path.join("results", str(shot), "pipeline_errors.log")
+    import datetime
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = f"[{ts}] time={time:.6f} | {stage} | {error_msg}"
+    if exc_info:
+        entry += f"\n{_traceback.format_exc()}"
+    try:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(entry + '\n')
+    except Exception:
+        pass
+    print(entry)
 
 
 def process_time_point(args):
@@ -255,7 +274,7 @@ def process_time_point(args):
             obj['NAMELIS1']['RTEIN'] = list(x_fit)
             obj['NAMELIS1']['TEIN'] = list(y_interp)
         except Exception as e:
-            print(f'(TS_Te) Error at {time}s: {str(e)}')
+            _log_error(shot, time, 'TS_Te', str(e))
             TE_STATUS = 1
     else:
         TE_STATUS = 1
@@ -286,7 +305,7 @@ def process_time_point(args):
             obj['NAMELIS1']['RENEIN'] = list(x_fit)
             obj['NAMELIS1']['ENEIN'] = list(y_interp * 1e13)
         except Exception as e:
-            print(f'(Refl_ne) Error at {time}s: {str(e)}')
+            _log_error(shot, time, 'Refl_ne', str(e))
             NE_STATUS = 1
     else:
         NE_STATUS = 1
@@ -324,7 +343,7 @@ def process_time_point(args):
             obj['NAMELIS1']['RTIIN'] = list(x_fit)
             obj['NAMELIS1']['TIIN'] = list(y_interp)
         except Exception as e:
-            print(f'(Ti_TXCS) Error at {time}s: {str(e)}')
+            _log_error(shot, time, 'Ti_TXCS', str(e))
     elif status['TXCS_status'] == 1:
         print(f'(Ti_TXCS) Skipped at {time}s: No Te pedestal data available')
 
@@ -389,22 +408,35 @@ def process_time_point(args):
             # --- 从 MDSplus 读取 gfile 并保存为 ONETWO 所需的 g0_input ---
             conn = Connection('202.127.204.42')  # EAST MDSplus 服务器地址
             TREE = 'efit_east'
-            conn.openTree(TREE, shot)
-            gg = geqdsk.read_from_MDS(conn, time)
-            g_times = conn.get(r'data(\GTIME)').data()
-            timeid = np.argmin(abs(g_times - time))
-            gg = geqdsk.read_from_MDS(conn, timeid)
-            conn.closeTree(TREE, shot)
+            try:
+                conn.openTree(TREE, shot)
+                g_times = np.asarray(conn.get(r'data(\GTIME)').data(), dtype=np.float64).flatten()
+                if len(g_times) == 0:
+                    raise ValueError(f'efit_east tree has zero gfile time slices for shot {shot}')
+                timeid = np.argmin(abs(g_times - time))
+                gg = geqdsk.read_from_MDS(conn, timeid)
+                conn.closeTree(TREE, shot)
+            except Exception as gfile_err:
+                try:
+                    conn.closeTree(TREE, shot)
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    f'Shot {shot} @ {time}s: gfile unavailable from MDSplus efit_east tree. '
+                    f'This shot has no EFIT equilibrium data. ONETWO cannot run without gfile.'
+                ) from gfile_err
 
             filename = os.path.join(onetwo_result_dir, "g0_input")
             geqdsk.save(gg, filename)
 
             # --- 调用 ONETWO 进行输运计算 ---
-            subprocess.run(["onetwo_129_201"], cwd=onetwo_result_dir, check=True)
+            _env = os.environ.copy()
+            _env['LD_LIBRARY_PATH'] = '/usr/local/mdsplus/lib:/home/fusion/imd/onetwo5/lib:/home/fusion/imd/auto12/netcdf4.1.3/pgi-1410/lib:/home/fusion/imd/auto12/cfetr_bin/lib:/home/fusion/imd/auto12/hdf5/pgi-1410/lib:' + _env.get('LD_LIBRARY_PATH', '')
+            subprocess.run([_ONETWO_EXE], cwd=onetwo_result_dir, check=True, env=_env)
             print(f'(onetwo)success at {time}s')
 
         except Exception as Error_onetwo:
-            print(f'(onetwo)fail at {time}s: {str(Error_onetwo)}')
+            _log_error(shot, time, 'mtanh_ONETWO', str(Error_onetwo), exc_info=True)
 
 
 def main():

@@ -23,7 +23,7 @@ from Namelist3 import Namelist
 import shutil
 import glob
 import time
-from lower_view_final import lower_onetwo
+from lower_view_final_nn import lower_onetwo_nn
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -64,6 +64,32 @@ def read_lhcd_data(filename):
 
 
 from readMDS_onetwo import readmds
+import traceback as _traceback
+
+# ONETWO 可执行文件路径（相对于脚本所在目录解析）
+_ONETWO_EXE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'onetwo_129_201')
+
+# === 共享错误日志（所有进程安全追加写入）===
+_ERROR_LOG_DIR = os.path.join("results")
+_ERROR_LOG_LOCK = None  # lazy init in worker
+
+def _log_error(shot, time, stage, error_msg, exc_info=False):
+    """记录错误到 results/{shot}/pipeline_errors.log。
+    所有 5 个 ONETWO 管道共用此函数，写入同一日志文件。
+    """
+    os.makedirs(os.path.join(_ERROR_LOG_DIR, str(shot)), exist_ok=True)
+    log_path = os.path.join(_ERROR_LOG_DIR, str(shot), "pipeline_errors.log")
+    import datetime
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = f"[{ts}] time={time:.6f} | {stage} | {error_msg}"
+    if exc_info:
+        entry += f"\n{_traceback.format_exc()}"
+    try:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(entry + '\n')
+    except Exception:
+        pass  # 日志写入失败不应中断主流程
+    print(entry)  # 同时输出到 stdout
 
 
 def process_time_point(args):
@@ -111,17 +137,17 @@ def process_time_point(args):
 
             # ---- 神经网络推理：替代 fitting() + robust_interp() ----
             # 输入 x(ρ), y(Te[eV]) → 输出 x_201(201点ρ网格), y_201(Te[keV])
-            x_201, y_201 = nn_fit_te(x, y)
+            x_te_201, y_te_201 = nn_fit_te(x, y)
 
             # 提取 Te 台基数据（ρ ≥ 0.88 区域），供后续 Ti 拟合使用
-            mask = (x_201 >= 0.88)
-            te_ped_x = x_201[mask]
-            te_ped_y = y_201[mask]
+            mask = (x_te_201 >= 0.88)
+            te_ped_x = x_te_201[mask]
+            te_ped_y = y_te_201[mask]
 
             # ---- 绘制并保存拟合结果图 ----
             plt.figure(figsize=(8, 5))
             plt.scatter(x, y / 1000., marker='.', c='g', label='TS raw')   # 原始数据 eV→keV
-            plt.plot(x_201, y_201, 'b-', linewidth=2, label='NN fitted')   # NN 拟合结果
+            plt.plot(x_te_201, y_te_201, 'b-', linewidth=2, label='NN fitted')   # NN 拟合结果
             plt.xlabel(r'$\rho$')
             plt.ylabel('Te(TS) (keV)')
             plt.title(f'Shot {shot} @ {real_time:.3f}s [NN]')
@@ -134,10 +160,10 @@ def process_time_point(args):
             print(f'(NN_Te) success at {real_time:.3f}s -> {save_path}')
 
             # 写入 ONETWO 的 NAMELIS1：TEIN 需要 eV 单位
-            obj['NAMELIS1']['RTEIN'] = list(x_201)
-            obj['NAMELIS1']['TEIN'] = list(y_201 * 1e3)  # keV -> eV
+            obj['NAMELIS1']['RTEIN'] = list(x_te_201)
+            obj['NAMELIS1']['TEIN'] = list(y_te_201 * 1e3)  # keV -> eV
         except Exception as e:
-            print(f'(NN_Te) Error at {time}s: {str(e)}')
+            _log_error(shot, time, 'NN_Te', str(e))
             TE_STATUS = 1
     else:
         TE_STATUS = 1  # TS 诊断不可用，标记跳过
@@ -151,12 +177,12 @@ def process_time_point(args):
 
             # ---- 神经网络推理：替代 fitting() + robust_interp() ----
             # 输入 x(ρ), y(ne[10^19 m^-3]) → 输出 x_201, y_201（同单位）
-            x_201, y_201 = nn_fit_ne(x, y)
+            x_ne_201, y_ne_201 = nn_fit_ne(x, y)
 
             # ---- 绘制并保存拟合结果图 ----
             plt.figure(figsize=(8, 5))
             plt.scatter(x, y, marker='.', c='g', label='Refl raw')
-            plt.plot(x_201, y_201, 'b-', linewidth=2, label='NN fitted')
+            plt.plot(x_ne_201, y_ne_201, 'b-', linewidth=2, label='NN fitted')
             plt.xlabel(r'$\rho$')
             plt.ylabel('ne(Refl) (10$^{19}$ m$^{-3}$)')
             plt.title(f'Shot {shot} @ {real_time:.3f}s [NN]')
@@ -169,10 +195,10 @@ def process_time_point(args):
             print(f'(NN_ne) success at {real_time:.3f}s -> {save_path}')
 
             # 写入 ONETWO 的 NAMELIS1：ENEIN 需要 cm^-3 单位
-            obj['NAMELIS1']['RENEIN'] = list(x_201)
-            obj['NAMELIS1']['ENEIN'] = list(y_201 * 1e13)  # 10^19 m^-3 -> cm^-3
+            obj['NAMELIS1']['RENEIN'] = list(x_ne_201)
+            obj['NAMELIS1']['ENEIN'] = list(y_ne_201 * 1e13)  # 10^19 m^-3 -> cm^-3
         except Exception as e:
-            print(f'(NN_ne) Error at {time}s: {str(e)}')
+            _log_error(shot, time, 'NN_ne', str(e))
             NE_STATUS = 1
     else:
         NE_STATUS = 1  # Refl 诊断不可用，标记跳过
@@ -208,7 +234,7 @@ def process_time_point(args):
             obj['NAMELIS1']['RTIIN'] = list(x_201)
             obj['NAMELIS1']['TIIN'] = list(y_201)
         except Exception as e:
-            print(f'(NN_Ti) Error at {time}s: {str(e)}')
+            _log_error(shot, time, 'NN_Ti', str(e))
     elif status['TXCS_status'] == 1:
         print(f'(NN_Ti) Skipped at {time}s: No Te pedestal data available')
 
@@ -221,8 +247,13 @@ def process_time_point(args):
             onetwo_result_dir = os.path.join(output_base, f"{shot}", time_dir, 'onetwo_nn')
             os.makedirs(onetwo_result_dir, exist_ok=True)
 
-            # ---- 调用 lower_onetwo 计算 LHW 功率沉积和电流驱动 ----
-            rho, power, current = lower_onetwo(shot, time, onetwo_result_dir)
+            # ---- 调用 lower_onetwo_nn 计算 LHW 功率沉积和电流驱动 ----
+            # 传入 NN 拟合的 Te/ne 剖面，避免 mtanh 拟合产生负值导致 sqrt→NaN
+            rho, power, current = lower_onetwo_nn(
+                shot, time, onetwo_result_dir,
+                te_profile_nn=y_te_201, ne_profile_nn=y_ne_201,
+                te_rho_nn=x_te_201, ne_rho_nn=x_ne_201,
+            )
 
             # ---- 组装 ONETWO Namelist ----
             # NAMELIS2：外部电流驱动（LHW）
@@ -272,21 +303,35 @@ def process_time_point(args):
             # ---- 从 MDSplus 读取 gfile 平衡文件 ----
             conn = Connection('202.127.204.42')
             TREE = 'efit_east'
-            conn.openTree(TREE, shot)
-            g_times = conn.get(r'data(\GTIME)').data()
-            timeid = np.argmin(abs(g_times - time))  # 找最近的 gfile 时间点
-            gg = geqdsk.read_from_MDS(conn, timeid)
-            conn.closeTree(TREE, shot)
+            try:
+                conn.openTree(TREE, shot)
+                g_times = np.asarray(conn.get(r'data(\GTIME)').data(), dtype=np.float64).flatten()
+                if len(g_times) == 0:
+                    raise ValueError(f'efit_east tree has zero gfile time slices for shot {shot}')
+                timeid = np.argmin(abs(g_times - time))
+                gg = geqdsk.read_from_MDS(conn, timeid)
+                conn.closeTree(TREE, shot)
+            except Exception as gfile_err:
+                try:
+                    conn.closeTree(TREE, shot)
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    f'Shot {shot} @ {time}s: gfile unavailable from MDSplus efit_east tree. '
+                    f'This shot has no EFIT equilibrium data. ONETWO cannot run without gfile.'
+                ) from gfile_err
 
             filename = os.path.join(onetwo_result_dir, "g0_input")
             geqdsk.save(gg, filename)
 
             # ---- 执行 ONETWO 输运计算 ----
-            subprocess.run(["onetwo_129_201"], cwd=onetwo_result_dir, check=True)
+            _env = os.environ.copy()
+            _env['LD_LIBRARY_PATH'] = '/usr/local/mdsplus/lib:/home/fusion/imd/onetwo5/lib:/home/fusion/imd/auto12/netcdf4.1.3/pgi-1410/lib:/home/fusion/imd/auto12/cfetr_bin/lib:/home/fusion/imd/auto12/hdf5/pgi-1410/lib:' + _env.get('LD_LIBRARY_PATH', '')
+            subprocess.run([_ONETWO_EXE], cwd=onetwo_result_dir, check=True, env=_env)
             print(f'(NN_onetwo) success at {time}s')
 
         except Exception as Error_onetwo:
-            print(f'(NN_onetwo) fail at {time}s: {str(Error_onetwo)}')
+            _log_error(shot, time, 'NN_ONETWO', str(Error_onetwo), exc_info=True)
 
 
 def main():
