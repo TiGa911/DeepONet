@@ -224,7 +224,40 @@ def main():
     print(f'JSON saved: {json_path}')
 
     print(f'\n{"="*70}')
-    print('Done.')
+    print(f'Done.')
+
+    # ---- H/L 模式分报告 ----
+    print(f'\n{"="*70}')
+    print(f'H-mode vs L-mode breakdown:')
+    h_rows = [r for r in all_rows if r.get('plasma_mode') == 'H']
+    l_rows = [r for r in all_rows if r.get('plasma_mode') == 'L']
+
+    for label, rows in [('H-mode (H98>=0.7)', h_rows), ('L-mode (H98<0.7)', l_rows)]:
+        if not rows:
+            print(f'  {label}: 0 samples')
+            continue
+        print(f'\n  {label}: {len(rows)} rows')
+
+        # 按 diagnostic+method 聚合
+        diags_in_mode = sorted(set(r['diagnostic'] for r in rows))
+        methods_in_mode = sorted(set(r['method'] for r in rows))
+        for diag in diags_in_mode:
+            for method in methods_in_mode:
+                vals = [r['MAE'] for r in rows
+                        if r['diagnostic'] == diag and r['method'] == method]
+                if vals:
+                    print(f'    {diag:4s} {method:12s}: '
+                          f'MAE={np.mean(vals):.4f} ± {np.std(vals):.4f}  (n={len(vals)})')
+
+    # 保存 H/L 分报告 CSV
+    for label, rows, suffix in [('H', h_rows, 'H_mode'), ('L', l_rows, 'L_mode')]:
+        if rows:
+            csv_path_mode = os.path.join(RESULT_BASE, f'all_metrics_{suffix}.csv')
+            with open(csv_path_mode, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+                writer.writeheader()
+                writer.writerows(rows)
+            print(f'\n{suffix} CSV saved: {csv_path_mode}')
 
 
 if __name__ == '__main__':

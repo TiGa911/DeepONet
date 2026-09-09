@@ -245,6 +245,25 @@ def process_time_point(args):
     # 调用 readmds 读取该时间点的所有诊断数据
     data, status, real_time = readmds(shot, time)
 
+    # === 离线数据覆盖：优先使用 paper/override/ 中的本地 NPZ ===
+    _override_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'override')
+    for _diag in ['Te', 'ne', 'Ti']:
+        _ov_path = os.path.join(_override_dir, f'{shot}_{time_dir}_{_diag}.npz')
+        if os.path.exists(_ov_path):
+            _ov = np.load(_ov_path)
+            _ov_rho = np.asarray(_ov['rho'], dtype=np.float64)
+            _ov_val = np.asarray(_ov['y'], dtype=np.float64)
+            if _diag == 'Ti':
+                data['Ti'] = {'TXCS': {'Rho': _ov_rho, 'data': _ov_val}, 'type': 'Ti'}
+                status['TXCS_status'] = 1
+            elif _diag == 'ne':
+                data['ne'] = {'Refl': {'Rho': _ov_rho, 'data': _ov_val, 'type': 'Refl'}}
+                status['Refl_status'] = 1
+            else:  # Te
+                data['Te'] = {'TS': {'Rho': _ov_rho, 'data': _ov_val, 'type': 'TS'}}
+                status['TS_status'] = 1
+            print(f'  (override) {_diag}: {len(_ov_rho)} pts')
+
     # ONETWO 标准径向网格：201 点，rho 从 0 到 1
     R_inone = np.linspace(0, 1, 201)
 
@@ -296,7 +315,7 @@ def process_time_point(args):
             # 插值为 201 点并写入 inone 的 NAMELIS1 区块
             x_fit, y_interp = robust_interp(x_te, y_te, datatype)
             obj['NAMELIS1']['RTEIN'] = list(x_fit)
-            obj['NAMELIS1']['TEIN'] = list(y_interp)
+            obj['NAMELIS1']['TEIN'] = list(y_interp)  # keV (ONETWO expects keV for TEIN)
         except Exception as e:
             _log_error(shot, time, 'TS_Te', str(e))
             TE_STATUS = 1
@@ -382,6 +401,22 @@ def process_time_point(args):
             # 获取 LHW 功率沉积与电流驱动剖面
             rho, power, current = lower_onetwo(shot, time, onetwo_result_dir)
 
+            # === 判断是否应跳过 ONETWO 执行（但仍保留中间文件） ===
+            _skip_onetwo = None
+            if rho is None or power is None or current is None or len(rho) == 0:
+                _skip_onetwo = 'no LHW power (PLHI2/PLHR2 unavailable)'
+            elif not (np.isfinite(power).all() and np.isfinite(current).all()):
+                _skip_onetwo = 'LHW profiles contain NaN/Inf'
+            else:
+                _max_curr = np.max(np.abs(current))
+                _max_power = np.max(np.abs(power))
+                if _max_curr < 1e-3:
+                    _skip_onetwo = f'LHW current ~0 (max|J|={_max_curr:.1e} MA/m²)'
+                elif _max_curr > 1e4:
+                    _skip_onetwo = f'LHW current unrealistically large (max|J|={_max_curr:.1e} MA/m²), likely bad MDSplus data'
+                elif _max_power > 1e4:
+                    _skip_onetwo = f'LHW power unrealistically large (max|P|={_max_power:.1e} MW/m³)'
+
             # --- 将 LHW 电流驱动剖面写入外部电流源（extcurrf）---
             obj['NAMELIS2']['extcurrf'] = [1.0]          # 启用外部电流源
             obj['NAMELIS2']['extcurrf_id'] = ['lhw']     # 源标识
@@ -429,31 +464,56 @@ def process_time_point(args):
             obj.write(onetwo_save_path)
             print('ecrh_written')
 
-            # --- 从 MDSplus 读取 gfile 并保存为 ONETWO 所需的 g0_input ---
-            conn = Connection('202.127.204.42')  # EAST MDSplus 服务器地址
-            TREE = 'efit_east'
-            try:
-                conn.openTree(TREE, shot)
-                g_times = np.asarray(conn.get(r'data(\GTIME)').data(), dtype=np.float64).flatten()
-                if len(g_times) == 0:
-                    raise ValueError(f'efit_east tree has zero gfile time slices for shot {shot}')
-                timeid = np.argmin(abs(g_times - time))
-                gg = geqdsk.read_from_MDS(conn, timeid)
-                conn.closeTree(TREE, shot)
-            except Exception as gfile_err:
+            # --- 读取 gfile 并保存为 ONETWO 所需的 g0_input ---
+            # 优先使用本地 gfile（{"{shot}_{time}_gfile"}），其次从 MDSplus 读取
+            import glob as _gf_glob
+            _gf_candidates = _gf_glob.glob(f'{shot}_*_gfile')
+            _gf_path = None
+            _gf_best_dt = float('inf')
+            for _gf in _gf_candidates:
                 try:
-                    conn.closeTree(TREE, shot)
-                except Exception:
+                    _gf_t = float(_gf.replace(f'{shot}_', '').replace('_gfile', ''))
+                    _gf_dt = abs(_gf_t - time)
+                    if _gf_dt < _gf_best_dt:
+                        _gf_best_dt = _gf_dt
+                        _gf_path = _gf
+                except ValueError:
                     pass
-                raise RuntimeError(
-                    f'Shot {shot} @ {time}s: gfile unavailable from MDSplus efit_east tree. '
-                    f'This shot has no EFIT equilibrium data. ONETWO cannot run without gfile.'
-                ) from gfile_err
+
+            if _gf_path and _gf_best_dt < 0.5:
+                print(f'  ONETWO using local gfile: {_gf_path} (Δt={_gf_best_dt*1000:.0f}ms)')
+                gg = geqdsk.load(_gf_path)
+            else:
+                # 回退到 MDSplus
+                conn = Connection('202.127.204.42')
+                TREE = 'efit_east'
+                try:
+                    conn.openTree(TREE, shot)
+                    g_times = np.asarray(conn.get(r'data(\GTIME)').data(), dtype=np.float64).flatten()
+                    if len(g_times) == 0:
+                        raise ValueError(f'efit_east tree has zero gfile time slices for shot {shot}')
+                    timeid = np.argmin(abs(g_times - time))
+                    gg = geqdsk.read_from_MDS(conn, timeid)
+                    conn.closeTree(TREE, shot)
+                    print(f'  ONETWO using MDSplus gfile timeid={timeid}')
+                except Exception as gfile_err:
+                    try:
+                        conn.closeTree(TREE, shot)
+                    except Exception:
+                        pass
+                    raise RuntimeError(
+                        f'Shot {shot} @ {time}s: gfile unavailable from MDSplus efit_east tree. '
+                        f'This shot has no EFIT equilibrium data. ONETWO cannot run without gfile.'
+                    ) from gfile_err
 
             filename = os.path.join(onetwo_result_dir, "g0_input")
             geqdsk.save(gg, filename)
 
             # --- 调用 ONETWO 进行输运计算 ---
+            if _skip_onetwo:
+                print(f'  → ONETWO will likely fail at t={time}s: {_skip_onetwo}')
+                print(f'  (running anyway to preserve intermediate files for inspection)')
+
             _env = os.environ.copy()
             _env['LD_LIBRARY_PATH'] = '/usr/local/mdsplus/lib:/home/fusion/imd/onetwo5/lib:/home/fusion/imd/auto12/netcdf4.1.3/pgi-1410/lib:/home/fusion/imd/auto12/cfetr_bin/lib:/home/fusion/imd/auto12/hdf5/pgi-1410/lib:' + _env.get('LD_LIBRARY_PATH', '')
             subprocess.run([_ONETWO_EXE], cwd=onetwo_result_dir, check=True, env=_env)

@@ -29,12 +29,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from profile_nn.model import (
     ProfileNet_Te, ProfileNet_ne, ProfileNet_Ti, PhysicsConstrainedLoss,
 )
-from profile_nn.dataset import ProfileDataset, collate_fn
+from profile_nn.dataset import ProfileDataset, StratifiedProfileDataset, collate_fn
 
 
 def train_one_model(datatype, data_dir, output_dir, epochs=500, batch_size=64,
                     lr=1e-3, w_mono=0.05, w_bdy=0.05, w_smooth=0.01,
-                    w_log=0.1, patience=100, device='cpu'):
+                    w_log=0.1, patience=100, device='cpu',
+                    split_method='random', plasma_mode='all'):
     """训练单个诊断类型的 ProfileNet 模型。
 
     训练流程：
@@ -68,9 +69,14 @@ def train_one_model(datatype, data_dir, output_dir, epochs=500, batch_size=64,
     print(f"{'='*60}")
 
     # ---- 数据集 ----
-    # 使用与 CNN/LSTM 对照组相同的数据划分（seed=42, 7:1.5:1.5）
-    train_ds = ProfileDataset(data_dir, datatype, split='train')
-    val_ds = ProfileDataset(data_dir, datatype, split='val')
+    if split_method == 'stratified':
+        train_ds = StratifiedProfileDataset(data_dir, datatype, split='train',
+                                            plasma_mode=plasma_mode)
+        val_ds = StratifiedProfileDataset(data_dir, datatype, split='val',
+                                          plasma_mode=plasma_mode)
+    else:
+        train_ds = ProfileDataset(data_dir, datatype, split='train')
+        val_ds = ProfileDataset(data_dir, datatype, split='val')
     print(f"训练集: {len(train_ds)} 样本, 验证集: {len(val_ds)} 样本")
 
     # 数据加载器：训练集打乱并丢弃最后不完整批次，验证集保持顺序
@@ -223,6 +229,12 @@ def main():
                         help='二阶导数平滑性约束损失权重 λ₃')
     parser.add_argument('--w-log', type=float, default=0.1,
                         help='log-space 损失权重（消融实验设为 0）')
+    parser.add_argument('--split-method', type=str, default='random',
+                        choices=['random', 'stratified'],
+                        help='数据集划分方式：random=按文件随机, stratified=按炮号分层')
+    parser.add_argument('--plasma-mode', type=str, default='all',
+                        choices=['H', 'L', 'all'],
+                        help='仅使用指定等离子体模式的样本（需 h98_index.csv）')
     args = parser.parse_args()
 
     output_dir = Path(args.output)
@@ -252,6 +264,8 @@ def main():
                 w_smooth=args.w_smooth,
                 w_log=args.w_log,
                 device=device,
+                split_method=args.split_method,
+                plasma_mode=args.plasma_mode,
             )
         except FileNotFoundError as e:
             print(f"跳过 {dt}: {e}")

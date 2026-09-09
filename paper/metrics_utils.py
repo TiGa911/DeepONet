@@ -88,6 +88,11 @@ METHOD_SPECS = {
         'color': '#457B9D',   # 蓝色
         'ls': '-', 'lw': 2.0,
     },
+    'cnn_deeponet': {
+        'label': 'CNN-DeepONet',
+        'color': '#8E44AD',   # 紫色
+        'ls': '-', 'lw': 2.0,
+    },
     'transformer': {
         'label': 'Transformer',
         'color': '#F4A261',   # 橙色
@@ -96,7 +101,7 @@ METHOD_SPECS = {
 }
 
 # NN 方法列表（不含 mtanh）
-NN_METHODS = ['nn', 'lstm', 'cnn', 'transformer']
+NN_METHODS = ['nn', 'lstm', 'cnn', 'cnn_deeponet', 'transformer']
 ALL_METHODS = ['mtanh'] + NN_METHODS
 
 # ================================================================
@@ -127,13 +132,40 @@ DIAGNOSTICS = ['Te', 'ne', 'Ti']
 # 架构对比表数据（来自 CLAUDE.md）
 # ================================================================
 
+# === 修改版：扩充测试集（5 炮 24 时间点：8H/10L/6unk，Te/ne n=24、Ti n=20）===
+# 由 make_latex_tables.py 从 paper_results/all_metrics.csv 生成
+# 注：Params 为 Te 模型参数量（实测于 profile_nn_models/*_Te.pt 的 state_dict）
 ARCHITECTURE_TABLE = [
     # (Model, Params, Te_MAE, ne_MAE, Ti_MAE, Architecture)
-    ('ProfileNet',   58000, 0.370, 0.376, 0.149, 'SetEncoder + CoordDecoder'),
-    ('LSTM',        175000, 0.325, 0.358, 0.152, 'BiLSTM + CoordDecoder'),
-    ('CNN-1D',       80000, 0.806, 1.056, 0.286, 'Pure ResNet (no DeepONet)'),
-    ('Transformer', 127000, 0.367, 0.373, 0.162, 'TransformerEncoder + CoordDecoder'),
+    ('ProfileNet',    67000, 0.512, 0.057, 0.091, 'SetEncoder + CoordDecoder'),
+    ('LSTM',          76000, 0.347, 0.060, 0.074, 'BiLSTM + CoordDecoder'),
+    ('CNN-1D',        66000, 0.342, 0.067, 0.141, 'Pure ResNet (no DeepONet)'),
+    ('CNN-DeepONet',  79000, 0.393, 0.075, 0.082, 'CNN encoder + CoordDecoder'),
+    ('Transformer',  136000, 0.350, 0.112, 0.089, 'TransformerEncoder + CoordDecoder'),
 ]
 
-# 4 炮号测试集
-TEST_SHOTS = [156005, 156010, 156100, 156400]
+# V5 H-mode 测试集指标（8 时间点）
+ARCHITECTURE_TABLE_H = [
+    ('ProfileNet',    67000, 0.639, 0.058, 0.097, 'SetEncoder + CoordDecoder'),
+    ('LSTM',          76000, 0.525, 0.065, 0.075, 'BiLSTM + CoordDecoder'),
+    ('CNN-1D',        66000, 0.660, 0.067, 0.110, 'Pure ResNet (no DeepONet)'),
+    ('CNN-DeepONet',  79000, 0.755, 0.073, 0.076, 'CNN encoder + CoordDecoder'),
+    ('Transformer',  136000, 0.694, 0.120, 0.090, 'TransformerEncoder + CoordDecoder'),
+]
+
+# V5 L-mode 测试集指标（10 时间点，排除 unknown）
+ARCHITECTURE_TABLE_L = [
+    ('ProfileNet',    67000, 0.298, 0.058, 0.073, 'SetEncoder + CoordDecoder'),
+    ('LSTM',          76000, 0.224, 0.063, 0.046, 'BiLSTM + CoordDecoder'),
+    ('CNN-1D',        66000, 0.206, 0.068, 0.150, 'Pure ResNet (no DeepONet)'),
+    ('CNN-DeepONet',  79000, 0.199, 0.071, 0.054, 'CNN encoder + CoordDecoder'),
+    ('Transformer',  136000, 0.185, 0.110, 0.041, 'TransformerEncoder + CoordDecoder'),
+]
+
+# === 原始版本（保留参考）===
+# # 4 炮号测试集
+# TEST_SHOTS = [156005, 156010, 156100, 156400]
+
+# === 修改版：扩充测试集，加入 156900（156200 因 EFIT 覆盖不足整体排除）===
+# 5 炮号测试集
+TEST_SHOTS = [156005, 156010, 156100, 156400, 156900]

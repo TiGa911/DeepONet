@@ -1,0 +1,9 @@
+Highlights for Fusion Engineering and Design submission (5 bullets, each <= 85 characters including spaces).
+Paste these into the "Highlights" field of the Editorial Manager submission form; they are intentionally
+NOT included in the manuscript PDF.
+
+1. DeepONet compresses the seven-step mtanh pipeline into one 14 ms forward pass
+2. Five neural architectures benchmarked on 68 unseen EAST profiles (H- and L-mode)
+3. Branch-trunk structure regularizes static encoders: CNN-1D degrades 25.8% without it
+4. CNN-DeepONet control isolates decoder: trunk improves sparse Ti by 42%
+5. Diagnostic-matched ensemble (CNN-Te, ProfileNet-ne, LSTM-Ti) enables automation

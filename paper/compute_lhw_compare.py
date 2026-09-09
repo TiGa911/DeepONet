@@ -251,7 +251,7 @@ def main():
 
             print(f'    {method:12s}: I={nn_result["I_total_kA"]:.1f} kA ({dI_pct:+.1f}%), '
                   f'P={nn_result["P_total_MW"]:.2f} MW ({dP_pct:+.1f}%), '
-                  f'j_RMS={j_metrics["RMSE"]:.4f} A/cm²')
+                  f'j_RMS={j_metrics["RMSE"]:.4f} A/cm^2')
 
             all_rows.append({
                 'shot': shot, 'time_dir': td,
@@ -292,19 +292,27 @@ def main():
 
 
 def generate_fig9(entries):
-    """生成 LHW 典型对比图（选第一个可用时间点）。"""
-    # 找一个有完整 LHW 结果的时间点
+    """生成 LHW 典型对比图（选 LHW 功率最高的可用时间点，即 shot 156400）。"""
+    # 找一个有真实 LHW 功率（P_in > 0）且 mtanh/NN 结果完整的时间点，取功率最高者
+    best = None
+    best_mtanh = None
     for entry in entries:
+        if entry['p_in_kw'] <= 0:
+            continue
         mtanh_r = compute_lhw_for_method(entry['shot'], entry, 'mtanh')
         if mtanh_r is None:
             continue
         nn_r = compute_lhw_for_method(entry['shot'], entry, 'nn')
         if nn_r is None:
             continue
-        break
-    else:
+        if best is None or entry['p_in_kw'] > best['p_in_kw']:
+            best = entry
+            best_mtanh = mtanh_r
+    if best is None:
         print('No complete LHW entry for fig9')
         return
+    entry = best
+    mtanh_r = best_mtanh
 
     shot = entry['shot']
     td = entry['time_dir']

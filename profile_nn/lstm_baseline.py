@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from profile_nn.dataset import ProfileDataset, collate_fn
+from profile_nn.dataset import ProfileDataset, StratifiedProfileDataset, collate_fn
 from profile_nn.model import PhysicsConstrainedLoss, CoordDecoder
 
 
@@ -182,7 +182,8 @@ class LSTMProfileNet_Ti(nn.Module):
 
 def train_lstm_model(datatype, data_dir, output_dir, epochs=500, batch_size=64,
                      lr=1e-3, w_mono=0.05, w_bdy=0.05, w_smooth=0.01, w_log=0.1,
-                     patience=100, device='cpu'):
+                     patience=100, device='cpu',
+                     split_method='random', plasma_mode='all'):
     """Train a BiLSTM baseline model."""
 
     print(f"\n{'='*60}")
@@ -190,8 +191,14 @@ def train_lstm_model(datatype, data_dir, output_dir, epochs=500, batch_size=64,
     print(f"{'='*60}")
 
     # Datasets (same split as ProfileNet)
-    train_ds = ProfileDataset(data_dir, datatype, split='train')
-    val_ds = ProfileDataset(data_dir, datatype, split='val')
+    if split_method == 'stratified':
+        train_ds = StratifiedProfileDataset(data_dir, datatype, split='train',
+                                            plasma_mode=plasma_mode)
+        val_ds = StratifiedProfileDataset(data_dir, datatype, split='val',
+                                          plasma_mode=plasma_mode)
+    else:
+        train_ds = ProfileDataset(data_dir, datatype, split='train')
+        val_ds = ProfileDataset(data_dir, datatype, split='val')
     print(f"Train: {len(train_ds)} samples  |  Val: {len(val_ds)} samples")
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
@@ -315,6 +322,10 @@ def main():
     parser.add_argument('--w-bdy', type=float, default=0.05)
     parser.add_argument('--w-smooth', type=float, default=0.01)
     parser.add_argument('--w-log', type=float, default=0.1)
+    parser.add_argument('--split-method', type=str, default='random',
+                        choices=['random', 'stratified'])
+    parser.add_argument('--plasma-mode', type=str, default='all',
+                        choices=['H', 'L', 'all'])
     args = parser.parse_args()
 
     output_dir = Path(args.output)
@@ -334,6 +345,7 @@ def main():
                 epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
                 w_mono=args.w_mono, w_bdy=args.w_bdy, w_smooth=args.w_smooth, w_log=args.w_log,
                 device=device,
+                split_method=args.split_method, plasma_mode=args.plasma_mode,
             )
         except FileNotFoundError as e:
             print(f"Skipping {dt}: {e}")

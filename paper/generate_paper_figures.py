@@ -30,7 +30,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 from metrics_utils import (
     METHOD_SPECS, NN_METHODS, ALL_METHODS, DIAGNOSTICS, DIAGNOSTIC_SPECS,
-    ARCHITECTURE_TABLE,
+    ARCHITECTURE_TABLE, ARCHITECTURE_TABLE_H, ARCHITECTURE_TABLE_L,
 )
 
 parser = argparse.ArgumentParser(description='Generate paper figures from NPZ + metrics')
@@ -152,16 +152,19 @@ def select_representative_points(metas, n=2, mode='H'):
 # ================================================================
 
 def fig_hmode_overlay(metas):
-    """3 diag × 2 columns H-mode overlay."""
-    selected = select_representative_points(metas, n=2, mode='H')
+    """3 diag × 3 columns H-mode overlay."""
+    selected = select_representative_points(metas, n=3, mode='H')
     if not selected:
         print('  No H-mode points found, using all available')
         scored = [(s, td, meta.get('h98', 0), meta) for (s, td), meta in metas.items()]
         scored.sort(key=lambda x: x[2], reverse=True)
-        selected = [(s, td, h, m) for s, td, h, m in scored[:2]]
+        selected = [(s, td, h, m) for s, td, h, m in scored[:3]]
 
-    fig, axes = plt.subplots(3, 2, figsize=(14, 16), dpi=300)
-    fig.suptitle('Typical H-mode Profile Fitting — 5 Methods Comparison',
+    n_cols = len(selected)
+    fig, axes = plt.subplots(3, n_cols, figsize=(6 * n_cols, 14), dpi=300)
+    if n_cols == 1:
+        axes = axes.reshape(3, 1)
+    fig.suptitle('Typical H-mode Profile Fitting — 6 Methods Comparison',
                  fontsize=14, fontweight='bold', y=0.995)
 
     for col, (shot, td, h98, meta) in enumerate(selected):
@@ -192,7 +195,7 @@ def fig_hmode_overlay(metas):
 
     # 单一共用图例
     handles, labels = axes[0][0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='lower center', ncol=5, fontsize=10,
+    fig.legend(handles, labels, loc='lower center', ncol=6, fontsize=10,
                bbox_to_anchor=(0.5, -0.02))
 
     fig.tight_layout(rect=[0, 0.04, 1, 0.98])
@@ -208,18 +211,21 @@ def fig_hmode_overlay(metas):
 
 def fig_lmode_overlay(metas):
     """3 diag × 2 columns L-mode overlay。若无 L-mode，用最低 H98 代表。"""
-    selected = select_representative_points(metas, n=2, mode='L')
+    selected = select_representative_points(metas, n=3, mode='L')
     if not selected:
         print('  No pure L-mode, using lowest-H98 points')
         scored = [(s, td, meta.get('h98', 99), meta) for (s, td), meta in metas.items()]
         scored.sort(key=lambda x: x[2])
-        selected = [(s, td, h, m) for s, td, h, m in scored[:2]]
+        selected = [(s, td, h, m) for s, td, h, m in scored[:3]]
 
-    fig, axes = plt.subplots(3, 2, figsize=(14, 16), dpi=300)
+    n_cols = len(selected)
+    fig, axes = plt.subplots(3, n_cols, figsize=(6 * n_cols, 14), dpi=300)
+    if n_cols == 1:
+        axes = axes.reshape(3, 1)
     # 检查是否是真 L-mode
     is_true_lmode = any(h < 0.7 for _, _, h, _ in selected)
     mode_label = 'L-mode' if is_true_lmode else 'Lowest-H98 Profiles'
-    fig.suptitle(f'Typical {mode_label} Profile Fitting — 5 Methods Comparison',
+    fig.suptitle(f'Typical {mode_label} Profile Fitting — 6 Methods Comparison',
                  fontsize=14, fontweight='bold', y=0.995)
 
     for col, (shot, td, h98, meta) in enumerate(selected):
@@ -248,7 +254,7 @@ def fig_lmode_overlay(metas):
             ax.grid(True, alpha=0.3)
 
     handles, labels = axes[0][0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='lower center', ncol=5, fontsize=10,
+    fig.legend(handles, labels, loc='lower center', ncol=6, fontsize=10,
                bbox_to_anchor=(0.5, -0.02))
     fig.tight_layout(rect=[0, 0.04, 1, 0.98])
     path = os.path.join(FIG_DIR, 'fig3_lmode_overlay.png')
@@ -262,14 +268,17 @@ def fig_lmode_overlay(metas):
 # ================================================================
 
 def fig_pedestal_zoom(metas):
-    """2×1 Te pedestal zoom (ρ=0.85-1.0)。"""
-    selected = select_representative_points(metas, n=2, mode='H')
+    """Te pedestal zoom (ρ=0.85-1.0) — 动态列数。"""
+    selected = select_representative_points(metas, n=3, mode='H')
     if not selected:
         scored = [(s, td, meta.get('h98', 0), meta) for (s, td), meta in metas.items()]
         scored.sort(key=lambda x: x[2], reverse=True)
-        selected = [(s, td, h, m) for s, td, h, m in scored[:2]]
+        selected = [(s, td, h, m) for s, td, h, m in scored[:3]]
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6), dpi=300)
+    n_cols = len(selected)
+    fig, axes = plt.subplots(1, n_cols, figsize=(5 * n_cols, 5.5), dpi=300)
+    if n_cols == 1:
+        axes = [axes]
     fig.suptitle('Pedestal Region Zoom (Te, ρ = 0.85–1.0)',
                  fontsize=13, fontweight='bold')
 
@@ -298,7 +307,7 @@ def fig_pedestal_zoom(metas):
         ax.axvline(x=0.95, color='gray', ls=':', lw=0.8, alpha=0.7)
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='lower center', ncol=5, fontsize=10,
+    fig.legend(handles, labels, loc='lower center', ncol=6, fontsize=10,
                bbox_to_anchor=(0.5, -0.08))
     fig.tight_layout(rect=[0, 0.06, 1, 0.95])
     path = os.path.join(FIG_DIR, 'fig4_pedestal_zoom.png')
@@ -317,10 +326,12 @@ def fig_peakedness_scatter(metrics_rows):
         print('  No metrics data, skipping fig5')
         return
 
+    # === 修改版：扩充测试集配色（156900；156200 已整体排除）===
     shot_colors = {156005: '#E63946', 156010: '#2A9D8F',
-                   156100: '#457B9D', 156400: '#F4A261'}
+                   156100: '#457B9D', 156400: '#F4A261',
+                   156900: '#27AE60'}
 
-    fig, axes = plt.subplots(3, 4, figsize=(18, 14), dpi=300)
+    fig, axes = plt.subplots(3, len(NN_METHODS), figsize=(5 * len(NN_METHODS), 14), dpi=300)
     fig.suptitle('Core Peakedness: NN vs mtanh (Reference)',
                  fontsize=13, fontweight='bold')
 
@@ -450,36 +461,59 @@ def fig_mae_boxplot(metrics_rows):
 # ================================================================
 
 def fig_architecture_table():
-    """渲染架构对比表为 matplotlib table。"""
-    col_labels = ['Model', 'Parameters', 'Te MAE', 'ne MAE', 'Ti MAE',
-                  'Inference (ms)', 'Architecture']
+    """渲染架构对比表 — V5 测试集 + H/L 子表。"""
+    # 主表: 全部测试集
+    col_labels = ['Model', 'Params', 'Te MAE', 'ne MAE', 'Ti MAE', 'Architecture']
     rows = []
     for model, params, te_mae, ne_mae, ti_mae, arch in ARCHITECTURE_TABLE:
         rows.append([model, f'{params:,}', f'{te_mae:.3f}', f'{ne_mae:.3f}',
-                     f'{ti_mae:.3f}', 'N/A', arch])
+                     f'{ti_mae:.3f}', arch])
 
-    fig, ax = plt.subplots(figsize=(14, 3.5), dpi=200)
-    ax.axis('off')
-    table = ax.table(cellText=rows, colLabels=col_labels, loc='center',
-                     cellLoc='center', colColours=['#E8E8E8'] * 7)
-    table.auto_set_font_size(False)
-    table.set_fontsize(10)
-    table.scale(1.0, 1.6)
+    fig, axes = plt.subplots(3, 1, figsize=(16, 10), dpi=200,
+                              gridspec_kw={'height_ratios': [1, 1, 1]})
 
-    ax.set_title('Architecture Comparison (Validation MAE from CLAUDE.md)',
-                 fontsize=12, fontweight='bold', pad=20)
+    titles = ['All (24 time points)', 'H-mode (8 time points)', 'L-mode (10 time points)']
+    tables_data = [ARCHITECTURE_TABLE, ARCHITECTURE_TABLE_H, ARCHITECTURE_TABLE_L]
+
+    for idx, ax in enumerate(axes):
+        ax.axis('off')
+        table_data = tables_data[idx]
+        cell_rows = []
+        for model, params, te_mae, ne_mae, ti_mae, arch in table_data:
+            cell_rows.append([model, f'{params:,}', f'{te_mae:.3f}', f'{ne_mae:.3f}',
+                            f'{ti_mae:.3f}', arch])
+
+        table = ax.table(cellText=cell_rows, colLabels=col_labels, loc='center',
+                         cellLoc='center', colColours=['#E8E8E8'] * 6)
+        table.auto_set_font_size(False)
+        table.set_fontsize(9)
+        table.scale(1.0, 1.5)
+
+        # Highlight best value in each MAE column (green)
+        for col_idx in [2, 3, 4]:  # MAE columns
+            values = [(i, float(row[col_idx])) for i, row in enumerate(cell_rows)]
+            best_idx = min(values, key=lambda x: x[1])[0]
+            table[best_idx + 1, col_idx].set_facecolor('#90EE90')
+
+        ax.set_title(titles[idx], fontsize=11, fontweight='bold', pad=10)
+
+    fig.suptitle('Architecture Comparison — V5 Test Set (MAE vs mtanh Baseline)',
+                 fontsize=12, fontweight='bold', y=1.01)
 
     path = os.path.join(FIG_DIR, 'fig8_architecture_table.png')
     fig.savefig(path, dpi=200, bbox_inches='tight')
     plt.close(fig)
 
-    # 同时导出 CSV
+    # 导出 CSV
     csv_path = os.path.join(FIG_DIR, 'architecture_table.csv')
     with open(csv_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(col_labels)
-        for model, params, te_mae, ne_mae, ti_mae, arch in ARCHITECTURE_TABLE:
-            writer.writerow([model, params, te_mae, ne_mae, ti_mae, '', arch])
+        writer.writerow(['Mode', 'Model', 'Params', 'Te_MAE', 'ne_MAE', 'Ti_MAE', 'Architecture'])
+        for mode, table in [('All', ARCHITECTURE_TABLE),
+                            ('H', ARCHITECTURE_TABLE_H),
+                            ('L', ARCHITECTURE_TABLE_L)]:
+            for model, params, te_mae, ne_mae, ti_mae, arch in table:
+                writer.writerow([mode, model, params, te_mae, ne_mae, ti_mae, arch])
     print(f'  fig8_architecture_table.png + csv saved')
 
 
@@ -545,6 +579,68 @@ def fig_temporal(metas):
 
 
 # ================================================================
+# Figure 7: H/L 模式 MAE 对比
+# ================================================================
+
+def fig_hl_comparison(metrics_rows):
+    """3×1: 每个诊断下 4 方法 H vs L 的 MAE 柱状图对比。"""
+    if not metrics_rows:
+        print('  No metrics data, skipping fig7')
+        return
+
+    # 仅取 H 和 L（排除 unknown）
+    h_rows = [r for r in metrics_rows if r.get('plasma_mode') == 'H']
+    l_rows = [r for r in metrics_rows if r.get('plasma_mode') == 'L']
+
+    fig, axes = plt.subplots(3, 1, figsize=(12, 15), dpi=300)
+    fig.suptitle('H-mode vs L-mode MAE Comparison (vs mtanh Baseline)',
+                 fontsize=13, fontweight='bold')
+
+    x = np.arange(len(NN_METHODS))
+    width = 0.35
+
+    for row, diag in enumerate(DIAGNOSTICS):
+        ax = axes[row]
+
+        h_means, h_stds = [], []
+        l_means, l_stds = [], []
+        for method in NN_METHODS:
+            h_vals = [float(r['MAE']) for r in h_rows
+                      if r['diagnostic'] == diag and r['method'] == method]
+            l_vals = [float(r['MAE']) for r in l_rows
+                      if r['diagnostic'] == diag and r['method'] == method]
+            h_means.append(np.mean(h_vals) if h_vals else 0)
+            h_stds.append(np.std(h_vals) if h_vals else 0)
+            l_means.append(np.mean(l_vals) if l_vals else 0)
+            l_stds.append(np.std(l_vals) if l_vals else 0)
+
+        colors_h = [METHOD_SPECS[m]['color'] for m in NN_METHODS]
+        colors_l = [METHOD_SPECS[m]['color'] for m in NN_METHODS]
+
+        n_h_shots = len(set(int(r['shot']) for r in h_rows if r['diagnostic'] == diag))
+        bars_h = ax.bar(x - width/2, h_means, width, yerr=h_stds,
+                        capsize=4, alpha=0.85, label=f'H-mode ({n_h_shots} shots)',
+                        color=[c for c in colors_h], edgecolor='gray', linewidth=0.8)
+        bars_l = ax.bar(x + width/2, l_means, width, yerr=l_stds,
+                        capsize=4, alpha=0.45, label=f'L-mode',
+                        color=[c for c in colors_l], edgecolor='gray',
+                        linewidth=0.8, hatch='//')
+
+        ax.set_xticks(x)
+        ax.set_xticklabels([METHOD_SPECS[m]['label'] for m in NN_METHODS], fontsize=10)
+        ax.set_ylabel(DIAGNOSTIC_SPECS[diag]['ylabel'], fontsize=11)
+        ax.set_title(f'{diag}', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=9, loc='upper left')
+        ax.grid(True, alpha=0.3, axis='y')
+
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    path = os.path.join(FIG_DIR, 'fig7_hl_comparison.png')
+    fig.savefig(path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f'  fig7_hl_comparison.png saved')
+
+
+# ================================================================
 # 主入口
 # ================================================================
 
@@ -573,6 +669,7 @@ def main():
     fig_pedestal_zoom(metas)
     fig_peakedness_scatter(metrics_rows)
     fig_mae_boxplot(metrics_rows)
+    fig_hl_comparison(metrics_rows)
     fig_architecture_table()
     fig_temporal(metas)
 

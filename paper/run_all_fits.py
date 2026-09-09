@@ -37,8 +37,16 @@ sys.path.insert(0, SCRIPT_DIR)
 MODEL_DIR = os.path.join(SCRIPT_DIR, 'profile_nn_models')
 OUTPUT_BASE = os.path.join(SCRIPT_DIR, 'paper_results')
 
-# 4 炮号测试集
-TEST_SHOTS = [156005, 156010, 156100, 156400]
+# === 原始版本（保留参考）===
+# # 4 炮号测试集
+# TEST_SHOTS = [156005, 156010, 156100, 156400]
+
+# === 修改版：扩充测试集，加入 156900（FED 审稿意见：测试集规模偏小）===
+# 5 炮号测试集（24 时间点）。
+# 注意：156200 经数据质量检查后整体排除（EFIT 只覆盖到 10.57s，TS 数据在 32-101s，
+#       ρ 映射不可靠）；156900 仅保留 3.5-6.5s 的 4 个 L-mode 点，
+#       7.5s/8.5s 降相段参考剖面非物理，已移至 paper_results/_excluded/。
+TEST_SHOTS = [156005, 156010, 156100, 156400, 156900]
 
 # =============================================================================
 # 命令行
@@ -187,11 +195,44 @@ try:
 except Exception as e:
     print(f'⚠ Transformer not available: {e}')
 
+try:
+    from profile_nn.infer_cnn_deeponet import (
+        nn_fit_te_cnn_deeponet, nn_fit_ne_cnn_deeponet, nn_fit_ti_cnn_deeponet,
+        set_model_dir_cnn_deeponet
+    )
+    set_model_dir_cnn_deeponet(MODEL_DIR)
+    NN_FITTERS['cnn_deeponet'] = {
+        'te': nn_fit_te_cnn_deeponet, 'ne': nn_fit_ne_cnn_deeponet, 'ti': nn_fit_ti_cnn_deeponet
+    }
+    print('✓ CNN-DeepONet loaded')
+except Exception as e:
+    print(f'⚠ CNN-DeepONet not available: {e}')
+
 RUN_MTANH = args.methods in ('all', 'mtanh')
 RUN_NN = args.methods in ('all', 'nn')
 
 # =============================================================================
-# H98 读取消
+# 离线数据覆盖（优先于 MDSplus）
+# =============================================================================
+
+OVERRIDE_DIR = os.path.join(SCRIPT_DIR, 'override')
+
+def _load_override(shot, time_dir, diag):
+    """检查 paper/override/{shot}_{time_dir}_{Diag}.npz 是否存在。
+
+    若存在，返回 (rho, values, datatype_str)。
+    若不存在，返回 (None, None, None)。
+    """
+    npz_path = os.path.join(OVERRIDE_DIR, f'{shot}_{time_dir}_{diag}.npz')
+    if os.path.exists(npz_path):
+        data = np.load(npz_path)
+        rho = np.asarray(data['rho'], dtype=np.float64)
+        val = np.asarray(data['y'], dtype=np.float64)
+        return rho, val, diag
+    return None, None, None
+
+# =============================================================================
+# H98 读取
 # =============================================================================
 
 def read_h98(shot: int, time_val: float) -> dict:
@@ -209,11 +250,15 @@ def read_h98(shot: int, time_val: float) -> dict:
         idx = np.argmin(np.abs(H98_times - time_val))
         h98_val = float(H98_data[idx])
 
-        mode = 'H' if (h98_val >= 0.7 and not np.isnan(h98_val)) else 'L'
+        # H98=0.0 通常是 MDSplus 读取失败（数据全零），标记为 unknown
+        if h98_val == 0.0:
+            mode = 'unknown'
+        else:
+            mode = 'H' if (h98_val >= 0.7 and not np.isnan(h98_val)) else 'L'
         return {'h98': h98_val, 'plasma_mode': mode, 'h98_time': float(H98_times[idx])}
     except Exception as e:
         print(f'  [H98 read failed: {e}]', end='')
-        return {'h98': None, 'plasma_mode': 'H', 'h98_time': None}
+        return {'h98': None, 'plasma_mode': 'unknown', 'h98_time': None}
 
 
 # =============================================================================
@@ -280,10 +325,17 @@ def process_time_point(shot: int, time_val: float):
              'plasma_mode': h98_info['plasma_mode'], 'h98': h98_info['h98']}
 
     # ---- Te ----
-    if status['TS_status'] == 1:
+    # 优先离线数据，回退 MDSplus
+    x_te_override, y_te_override, _ = _load_override(shot, time_dir, 'Te')
+    if x_te_override is not None:
+        x_raw, y_raw = x_te_override, y_te_override  # 单位: .npz 中应为 eV
+        datatype = 'Te'
+        status['TS_status'] = 1
+        print(' Te:override', end='')
+    elif status['TS_status'] == 1:
         x_raw = np.asarray(data['Te']['TS']['Rho'], dtype=np.float64)
         y_raw = np.asarray(data['Te']['TS']['data'], dtype=np.float64)  # eV
-        # 过滤 NaN（MDSplus 原始数据可能含 NaN，mtanh 的 clean() 会自动处理，但 NN 不会）
+        # 过滤 NaN
         valid_te = ~np.isnan(x_raw) & ~np.isnan(y_raw)
         if not valid_te.all():
             print(f' [Te:drop {sum(~valid_te)} NaN]', end='')
@@ -325,10 +377,15 @@ def process_time_point(shot: int, time_val: float):
             del_y_mt_ped = np.array([])
 
     # ---- ne ----
-    if status['Refl_status'] == 1:
+    x_ne_override, y_ne_override, _ = _load_override(shot, time_dir, 'ne')
+    if x_ne_override is not None:
+        x_raw, y_raw = x_ne_override, y_ne_override  # 1e19 m^-3
+        datatype = 'ne'
+        status['Refl_status'] = 1
+        print(' ne:override', end='')
+    elif status['Refl_status'] == 1:
         x_raw = np.asarray(data['ne']['Refl']['Rho'], dtype=np.float64)
         y_raw = np.asarray(data['ne']['Refl']['data'], dtype=np.float64)  # 1e19 m^-3
-        # 过滤 NaN
         valid_ne = ~np.isnan(x_raw) & ~np.isnan(y_raw)
         if not valid_ne.all():
             print(f' [ne:drop {sum(~valid_ne)} NaN]', end='')
@@ -365,7 +422,13 @@ def process_time_point(shot: int, time_val: float):
         del_y_mt_ped = np.array([])
 
     # ---- Ti ----
-    if status['TXCS_status'] == 1:
+    x_ti_override, y_ti_override, _ = _load_override(shot, time_dir, 'Ti')
+    if x_ti_override is not None:
+        x_raw, y_raw = x_ti_override, y_ti_override  # keV
+        datatype = 'Ti'
+        status['TXCS_status'] = 1
+        print(' Ti:override', end='')
+    elif status['TXCS_status'] == 1:
         x_raw = np.asarray(data['Ti']['TXCS']['Rho'], dtype=np.float64)
         y_raw = np.asarray(data['Ti']['TXCS']['data'], dtype=np.float64)  # keV
         # 过滤 NaN

@@ -16,46 +16,70 @@ def readmds(shot, time):
 
     conn   = Connection(MDSIP)
 
-    # Read geqdsk from MDS+ server
-    # TREE  = 'pefitrt_east'
-    TREE  = 'efit_east'
-    try:
-        conn.openTree(TREE, shot)
-    except Exception as e:
-        raise ConnectionError(
-            f'Shot {shot}: efit_east tree not available on MDSplus ({e}). '
-            f'This shot has no EFIT equilibrium data — gfile cannot be read.'
-        ) from e
+    # === 本地 gfile 优先检查 ===
+    # 如果当前目录下存在匹配的本地 gfile，直接加载，跳过 MDSplus 读取
+    import glob as _glob
+    _local_gfiles = _glob.glob(f'{shot}_*_gfile')
+    _local_gfile = None
+    _best_dt = float('inf')
+    for _gf in _local_gfiles:
+        try:
+            _gf_time = float(_gf.replace(f'{shot}_', '').replace('_gfile', ''))
+            _dt = abs(_gf_time - time)
+            if _dt < _best_dt:
+                _best_dt = _dt
+                _local_gfile = _gf
+        except ValueError:
+            pass
 
-    g_times = np.asarray(conn.get(r'data(\GTIME)').data(), dtype=np.float64).flatten()
+    if _local_gfile is not None and _best_dt < 0.5:
+        # 使用本地 gfile，跳过 MDSplus 读取
+        real_time = float(_local_gfile.replace(f'{shot}_', '').replace('_gfile', ''))
+        print(f'[本地 gfile] {_local_gfile} (Δt={_best_dt*1000:.1f}ms)')
+        gg = geqdsk.load(_local_gfile)
+        gg['head'] = f'{shot}_{time}'
+        # 跳过 MDSplus gfile 读取，直接进入诊断数据读取
+        pass
+    else:
+        # Read geqdsk from MDS+ server
+        # TREE  = 'pefitrt_east'
+        TREE  = 'efit_east'
+        try:
+            conn.openTree(TREE, shot)
+        except Exception as e:
+            raise ConnectionError(
+                f'Shot {shot}: efit_east tree not available on MDSplus ({e}). '
+                f'This shot has no EFIT equilibrium data — gfile cannot be read.'
+            ) from e
 
-    # === gfile 可用性检查 ===
-    if len(g_times) == 0:
+        g_times = np.asarray(conn.get(r'data(\GTIME)').data(), dtype=np.float64).flatten()
+
+        # === gfile 可用性检查 ===
+        if len(g_times) == 0:
+            conn.closeTree(TREE, shot)
+            raise ValueError(
+                f'Shot {shot} @ {time}s: efit_east tree has zero gfile time slices. '
+                f'This shot has no EFIT equilibrium reconstruction data on MDSplus.'
+            )
+
+        dt = abs(g_times - time)
+        timeid = np.argmin(dt)
+        time_gap = dt[timeid]
+        real_time = float(g_times[timeid])
+
+        # 警告：gfile 时间与请求时间差距过大
+        if time_gap > 0.5:
+            print(
+                f'⚠ Shot {shot}: gfile time {real_time:.3f}s is {time_gap*1000:.0f}ms '
+                f'away from requested {time:.3f}s — equilibrium may not match diagnostics'
+            )
+
+        print(f'gfile: shot={shot} timeid={timeid} real_time={real_time:.4f}s (Δt={time_gap*1000:.1f}ms)')
+        gg = geqdsk.read_from_MDS(conn, timeid)
+        gg['head'] = f'{shot}_{time}'
         conn.closeTree(TREE, shot)
-        raise ValueError(
-            f'Shot {shot} @ {time}s: efit_east tree has zero gfile time slices. '
-            f'This shot has no EFIT equilibrium reconstruction data on MDSplus.'
-        )
 
-    dt = abs(g_times - time)
-    timeid = np.argmin(dt)
-    time_gap = dt[timeid]
-    real_time = float(g_times[timeid])
-
-    # 警告：gfile 时间与请求时间差距过大
-    if time_gap > 0.5:
-        print(
-            f'⚠ Shot {shot}: gfile time {real_time:.3f}s is {time_gap*1000:.0f}ms '
-            f'away from requested {time:.3f}s — equilibrium may not match diagnostics'
-        )
-
-    print(f'gfile: shot={shot} timeid={timeid} real_time={real_time:.4f}s (Δt={time_gap*1000:.1f}ms)')
-    gg = geqdsk.read_from_MDS(conn, timeid)
-    gg['head'] = f'{shot}_{time}'
-    conn.closeTree(TREE, shot)
-
-    # === 修改版：启用 gfile 自动保存，供 lower_view_final_nn.py::_find_gfile() 使用 ===
-    # 用 MDSplus 实际 gfile 时间（real_time）确保与 ONETWO 管道时间匹配
+    # === gfile 自动保存，供 lower_view_final_nn.py::_find_gfile() 使用 ===
     gfile_time = float(real_time)
     gfile_name = f'{shot}_{gfile_time}_gfile'
     geqdsk.save(gg, gfile_name)
@@ -240,6 +264,23 @@ def readmds(shot, time):
         zeff_array = np.full(shape=51, fill_value=2.5)
         pass
 
+    # %% H98 from energy_east
+    # 读取能量约束因子 H98，用于 H/L 模式判定
+    # 阈值：H98 >= 0.7 为 H-mode（与 fitting_mtanh.judge_plasma_mode 一致）
+    try:
+        conn.openTree('energy_east', shot)
+        H98_times = conn.get(r'dim_of(\H98_MHD)').data()
+        H98_data = conn.get(r'data(\H98_MHD)').data()
+        h98_timeid = np.argmin(abs(H98_times - time))
+        h98_value = float(np.array(H98_data).flatten()[h98_timeid])
+        conn.closeTree('energy_east', shot)
+        print('H98_value:', h98_value)
+    except Exception as H98_ERROR:
+        print('H98_ERROR:', H98_ERROR)
+        h98_value = np.nan
+        H98_times = np.array([])
+        H98_data = np.array([])
+
     # %%
     # CXRS
     # TREE = 'CXRS_EAST'
@@ -322,6 +363,8 @@ def readmds(shot, time):
         status['Refl_status'] = 0
         pass
 
-    data = {'ne': ne, 'Te': Te, 'Ti': Ti, 'zeff':z_eff_value}
-    return data, status,real_time
+    data = {'ne': ne, 'Te': Te, 'Ti': Ti, 'zeff': z_eff_value,
+            'H98': {'value': h98_value, 'time': H98_times, 'data': H98_data}}
+    status['H98'] = h98_value  # 方便调用方快速访问
+    return data, status, real_time
     # return  TXCS_mapped, Refl_mapped

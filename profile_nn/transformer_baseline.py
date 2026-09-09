@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from profile_nn.dataset import ProfileDataset, collate_fn
+from profile_nn.dataset import ProfileDataset, StratifiedProfileDataset, collate_fn
 from profile_nn.model import PhysicsConstrainedLoss, CoordDecoder
 
 
@@ -219,7 +219,8 @@ def train_transformer_model(datatype, data_dir, output_dir, epochs=500, batch_si
                             lr=1e-3, w_mono=0.05, w_bdy=0.05, w_smooth=0.01, w_log=0.1,
                             patience=100, device='cpu',
                             hidden=64, num_layers=2, num_heads=4, ffn_dim=256,
-                            dropout=0.1, max_len=None):
+                            dropout=0.1, max_len=None,
+                            split_method='random', plasma_mode='all'):
     """Train a Transformer baseline model."""
 
     # Auto-select max_len per datatype (covers dataset max sequence lengths)
@@ -232,8 +233,14 @@ def train_transformer_model(datatype, data_dir, output_dir, epochs=500, batch_si
     print(f"{'='*60}")
 
     # Datasets (same split as ProfileNet/LSTM/CNN)
-    train_ds = ProfileDataset(data_dir, datatype, split='train')
-    val_ds = ProfileDataset(data_dir, datatype, split='val')
+    if split_method == 'stratified':
+        train_ds = StratifiedProfileDataset(data_dir, datatype, split='train',
+                                            plasma_mode=plasma_mode)
+        val_ds = StratifiedProfileDataset(data_dir, datatype, split='val',
+                                          plasma_mode=plasma_mode)
+    else:
+        train_ds = ProfileDataset(data_dir, datatype, split='train')
+        val_ds = ProfileDataset(data_dir, datatype, split='val')
     print(f"Train: {len(train_ds)} samples  |  Val: {len(val_ds)} samples")
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
@@ -363,6 +370,10 @@ def main():
     parser.add_argument('--w-bdy', type=float, default=0.05)
     parser.add_argument('--w-smooth', type=float, default=0.01)
     parser.add_argument('--w-log', type=float, default=0.1)
+    parser.add_argument('--split-method', type=str, default='random',
+                        choices=['random', 'stratified'])
+    parser.add_argument('--plasma-mode', type=str, default='all',
+                        choices=['H', 'L', 'all'])
     parser.add_argument('--hidden', type=int, default=64)
     parser.add_argument('--num-layers', type=int, default=2)
     parser.add_argument('--num-heads', type=int, default=4)
@@ -392,6 +403,7 @@ def main():
                 hidden=args.hidden, num_layers=args.num_layers,
                 num_heads=args.num_heads, ffn_dim=args.ffn_dim,
                 dropout=args.dropout, max_len=args.max_len,
+                split_method=args.split_method, plasma_mode=args.plasma_mode,
             )
         except FileNotFoundError as e:
             print(f"Skipping {dt}: {e}")

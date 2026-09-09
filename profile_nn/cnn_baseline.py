@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from profile_nn.dataset import ProfileDataset
+from profile_nn.dataset import ProfileDataset, StratifiedProfileDataset
 from profile_nn.model import PhysicsConstrainedLoss
 
 GRID_SIZE = 201  # output grid = input grid for pure CNN
@@ -216,8 +216,13 @@ class GridDataset(Dataset):
     """Wraps ProfileDataset: scattered points → (2, 201) grid tensors."""
 
     def __init__(self, data_dir, datatype, split='train',
-                 split_ratio=(0.7, 0.15, 0.15), grid_size=GRID_SIZE):
-        self.base_ds = ProfileDataset(data_dir, datatype, split, split_ratio)
+                 split_ratio=(0.7, 0.15, 0.15), grid_size=GRID_SIZE,
+                 split_method='random', plasma_mode='all'):
+        if split_method == 'stratified':
+            self.base_ds = StratifiedProfileDataset(
+                data_dir, datatype, split, split_ratio, plasma_mode)
+        else:
+            self.base_ds = ProfileDataset(data_dir, datatype, split, split_ratio)
         self.grid_size = grid_size
         self.is_ti = (datatype == 'Ti')
 
@@ -269,15 +274,18 @@ def collate_cnn(batch):
 
 def train_cnn_model(datatype, data_dir, output_dir, epochs=500, batch_size=64,
                     lr=1e-3, w_mono=0.05, w_bdy=0.05, w_smooth=0.01, w_log=0.1,
-                    patience=100, device='cpu'):
+                    patience=100, device='cpu',
+                    split_method='random', plasma_mode='all'):
     """Train a CNN-1D ResNet baseline model."""
 
     print(f"\n{'='*60}")
     print(f"Training CNN-1D ResNet Baseline — {datatype}")
     print(f"{'='*60}")
 
-    train_ds = GridDataset(data_dir, datatype, split='train')
-    val_ds = GridDataset(data_dir, datatype, split='val')
+    train_ds = GridDataset(data_dir, datatype, split='train',
+                            split_method=split_method, plasma_mode=plasma_mode)
+    val_ds = GridDataset(data_dir, datatype, split='val',
+                          split_method=split_method, plasma_mode=plasma_mode)
     print(f"Train: {len(train_ds)} samples  |  Val: {len(val_ds)} samples")
     print(f"Architecture: Pure ResNet encoder-decoder (no DeepONet components)")
 
@@ -555,6 +563,10 @@ def main():
     parser.add_argument('--w-bdy', type=float, default=0.05)
     parser.add_argument('--w-smooth', type=float, default=0.01)
     parser.add_argument('--w-log', type=float, default=0.1)
+    parser.add_argument('--split-method', type=str, default='random',
+                        choices=['random', 'stratified'])
+    parser.add_argument('--plasma-mode', type=str, default='all',
+                        choices=['H', 'L', 'all'])
     args = parser.parse_args()
 
     output_dir = Path(args.output)
@@ -574,6 +586,7 @@ def main():
                 epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
                 w_mono=args.w_mono, w_bdy=args.w_bdy, w_smooth=args.w_smooth, w_log=args.w_log,
                 device=device,
+                split_method=args.split_method, plasma_mode=args.plasma_mode,
             )
         except FileNotFoundError as e:
             print(f"Skipping {dt}: {e}")

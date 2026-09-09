@@ -159,30 +159,8 @@ def _validate_saved(filepath, max_x=30.0, max_y=30.0, min_y=-0.5):
 # 数据提取：从 MDSplus 诊断数据中提取训练样本
 # ---------------------------------------------------------------------------
 
-def extract_te_from_data(data, status, real_time, shot, output_dir):
-    """从预读取的 MDSplus 数据中提取一个 Te 训练样本。
-
-    处理流程：
-      1. 检查 TS 诊断状态是否正常
-      2. 读 TS 的 (ρ, Te) 散点，Te 从 eV 转为 keV
-      3. 预过滤：拒绝极端异常值（>15 keV 或 < -0.5 keV）
-      4. 调用 mtanh fitting() 获取拟合剖面
-      5. robust_interp() 插值到均匀 201 点
-      6. 后过滤：拒绝拟合失败的剖面
-      7. 提取 ρ ≥ 0.88 的台基区域数据（供 Ti 样本使用）
-      8. 保存为 .npz，并通过 _validate_saved 验证
-
-    Args:
-        data: readmds() 返回的诊断数据字典
-        status: 诊断状态字典（TS_status, Refl_status, TXCS_status 等）
-        real_time: MDSplus 实际时间点
-        shot: EAST 炮号
-        output_dir: 输出目录
-
-    Returns:
-        成功时返回 {'te_ped_x', 'te_ped_y'} 台基数据字典，供 Ti 提取使用
-        失败时返回 None
-    """
+def extract_te_from_data(data, status, real_time, shot, output_dir, h98_value=np.nan):
+    """从预读取的 MDSplus 数据中提取一个 Te 训练样本。"""
     if status.get('TS_status', 0) != 1 or 'TS' not in data.get('Te', {}):
         return None
 
@@ -224,6 +202,7 @@ def extract_te_from_data(data, status, real_time, shot, output_dir):
             X_val=y_keV.astype(np.float32),
             Y=y_201.astype(np.float32),
             shot=shot, time=real_time, datatype='Te',
+            h98=float(h98_value) if np.isfinite(h98_value) else -1.0,
         )
         # 保存后验证：数值异常时自动删除
         if not _validate_saved(filepath, max_x=15.0, max_y=15.0, min_y=-0.5):
@@ -234,7 +213,7 @@ def extract_te_from_data(data, status, real_time, shot, output_dir):
         return None
 
 
-def extract_ne_from_data(data, status, real_time, shot, output_dir):
+def extract_ne_from_data(data, status, real_time, shot, output_dir, h98_value=np.nan):
     """从诊断数据中提取一个 ne 训练样本。先尝试 TS 通道，失败则回退到 Refl。
 
     单位处理说明：
@@ -249,19 +228,19 @@ def extract_ne_from_data(data, status, real_time, shot, output_dir):
         成功返回 True，失败返回 None
     """
     # 优先尝试 TS 通道（空间分辨率更高）
-    ne_result = _try_extract_ne_ts(data, status, real_time, shot, output_dir)
+    ne_result = _try_extract_ne_ts(data, status, real_time, shot, output_dir, h98_value)
     if ne_result is not None:
         return True
 
     # TS 不可用或数据异常时回退到 Refl（反射计）
-    ne_result = _try_extract_ne_refl(data, status, real_time, shot, output_dir)
+    ne_result = _try_extract_ne_refl(data, status, real_time, shot, output_dir, h98_value)
     if ne_result is not None:
         return True
 
     return None
 
 
-def _try_extract_ne_ts(data, status, real_time, shot, output_dir):
+def _try_extract_ne_ts(data, status, real_time, shot, output_dir, h98_value=np.nan):
     """尝试从 TS 诊断提取 ne。成功返回 True，不可用返回 None。
 
     TS ne 数据在某些炮号时段可能使用不同的 MDSplus 单位约定，
@@ -306,6 +285,7 @@ def _try_extract_ne_ts(data, status, real_time, shot, output_dir):
             X_val=y.astype(np.float32),
             Y=y_201.astype(np.float32),
             shot=shot, time=real_time, datatype='ne',
+            h98=float(h98_value) if np.isfinite(h98_value) else -1.0,
         )
         if not _validate_saved(filepath, max_x=25.0, max_y=25.0, min_y=-0.5):
             return None
@@ -315,7 +295,7 @@ def _try_extract_ne_ts(data, status, real_time, shot, output_dir):
         return None
 
 
-def _try_extract_ne_refl(data, status, real_time, shot, output_dir):
+def _try_extract_ne_refl(data, status, real_time, shot, output_dir, h98_value=np.nan):
     """从反射计 (Reflectometer) 提取 ne 作为回退方案。
 
     Refl 的 \\ne_ReflJ 数据已在 ~10^19 m^-3 量级（典型范围 0.1-5），
@@ -358,6 +338,7 @@ def _try_extract_ne_refl(data, status, real_time, shot, output_dir):
             X_val=y.astype(np.float32),
             Y=y_201.astype(np.float32),
             shot=shot, time=real_time, datatype='ne',
+            h98=float(h98_value) if np.isfinite(h98_value) else -1.0,
         )
         if not _validate_saved(filepath, max_x=25.0, max_y=25.0, min_y=-0.5):
             return None
@@ -367,7 +348,7 @@ def _try_extract_ne_refl(data, status, real_time, shot, output_dir):
         return None
 
 
-def extract_ti_from_data(data, status, real_time, shot, te_ped_data, output_dir):
+def extract_ti_from_data(data, status, real_time, shot, te_ped_data, output_dir, h98_value=np.nan):
     """从诊断数据中提取一个 Ti 训练样本。需要 Te 台基数据作为先决条件。
 
     Ti 提取的特殊性：
@@ -419,6 +400,7 @@ def extract_ti_from_data(data, status, real_time, shot, te_ped_data, output_dir)
             X_te_ped_val=te_ped_data['te_ped_y'].astype(np.float32),
             Y=y_201.astype(np.float32),
             shot=shot, time=real_time, datatype='Ti',
+            h98=float(h98_value) if np.isfinite(h98_value) else -1.0,
         )
         if not _validate_saved(filepath, max_x=20.0, max_y=20.0, min_y=-0.5):
             return None
@@ -577,6 +559,14 @@ def main():
                         help='额外生成 N 个 H-mode 合成样本（窄台基+高峰值度）')
     parser.add_argument('--time-limit', type=int, default=0, metavar='N',
                         help='每炮号最多处理前 N 个时间片（0=全部）')
+    parser.add_argument('--h98-min', type=float, default=None,
+                        help='H98 下界筛选（只生成 H98 >= 此值的时间点）')
+    parser.add_argument('--h98-max', type=float, default=None,
+                        help='H98 上界筛选（只生成 H98 <= 此值的时间点）')
+    parser.add_argument('--diagnostics', type=str, nargs='+',
+                        default=['Te', 'ne', 'Ti'],
+                        choices=['Te', 'ne', 'Ti'],
+                        help='只生成指定的诊断类型（默认全部）')
     args = parser.parse_args()
 
     output_dir = Path(args.output)
@@ -627,25 +617,44 @@ def main():
                     print(f"  readmds 失败 @ {t:.3f}s: {e}")
                     continue
 
+                # ---- H98 提取与筛选 ----
+                h98_value = float(data.get('H98', {}).get('value', np.nan))
+                if args.h98_min is not None and np.isfinite(h98_value) and h98_value < args.h98_min:
+                    continue  # H98 低于下限，跳过该时间点
+                if args.h98_max is not None and np.isfinite(h98_value) and h98_value > args.h98_max:
+                    continue  # H98 高于上限，跳过该时间点
+
                 # ---- Te 提取（必须在 ne 和 Ti 之前） ----
-                if status.get('TS_status', 0) == 1:
-                    te_ped = extract_te_from_data(data, status, real_time, shot, str(output_dir))
-                    if te_ped is not None:
-                        te_count += 1
+                te_ped = None
+                if 'Te' in args.diagnostics:
+                    if status.get('TS_status', 0) == 1:
+                        te_ped = extract_te_from_data(data, status, real_time, shot, str(output_dir), h98_value)
+                        if te_ped is not None:
+                            te_count += 1
+                        else:
+                            continue  # Te 失败则跳过 ne 和 Ti（需要 Te 台基数据）
                     else:
-                        continue  # Te 失败则跳过 ne 和 Ti（需要 Te 台基数据）
+                        continue  # TS 不可用则跳过后面的提取
                 else:
-                    continue  # TS 不可用则跳过后面的提取
+                    # 不生成 Te 但需要台基数据给 ne/Ti：仍做 Te 提取但不保存
+                    if status.get('TS_status', 0) == 1:
+                        te_ped = extract_te_from_data(data, status, real_time, shot, str(output_dir), h98_value)
+                        if te_ped is None:
+                            continue
+                    else:
+                        continue
 
                 # ---- ne 提取 ----
-                ne_ok = extract_ne_from_data(data, status, real_time, shot, str(output_dir))
-                if ne_ok:
-                    ne_count += 1
+                if 'ne' in args.diagnostics:
+                    ne_ok = extract_ne_from_data(data, status, real_time, shot, str(output_dir), h98_value)
+                    if ne_ok:
+                        ne_count += 1
 
                 # ---- Ti 提取（依赖 te_ped） ----
-                ti_ok = extract_ti_from_data(data, status, real_time, shot, te_ped, str(output_dir))
-                if ti_ok:
-                    ti_count += 1
+                if 'Ti' in args.diagnostics and te_ped is not None:
+                    ti_ok = extract_ti_from_data(data, status, real_time, shot, te_ped, str(output_dir), h98_value)
+                    if ti_ok:
+                        ti_count += 1
 
             print(f"炮号 {shot} 完成: Te={te_count}, ne={ne_count}, Ti={ti_count}")
 

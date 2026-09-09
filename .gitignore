@@ -13,3 +13,11 @@ debug_fit/
 *.pptx
 *.log
 137951_csv/
+
+# LaTeX build artifacts
+*.aux
+*.out
+*.fls
+*.fdb_latexmk
+# Downloaded reference PDFs (large, for personal use)
+paper/相关文献/

@@ -177,7 +177,7 @@ A PyTorch package that replaces the mtanh+spline fitting chain with small neural
 | **Transformer** | **0.367** | **0.373** | **0.162** | 127K | TransformerEncoder + CoordDecoder |
 | **CNN-1D** | 0.806 | 1.056 | 0.286 | 80K | Pure ResNet (no DeepONet) |
 
-**Deployment recommendation (V4 — real H-mode data):** Te → CNN, ne → Transformer, Ti → LSTM (best per-diagnostic). Models are in `profile_nn_models/` (renamed from `profile_nn_models_v4/` after cleanup). All trained with real H-mode data (342 Te + 302 ne + 148 Ti H-mode samples from 52 shots).
+**Deployment recommendation (V4 — real H-mode data):** validation best: Te → CNN, ne → Transformer, Ti → LSTM. The FED paper (`paper/manuscript_fed.tex`, 5-shot 24-time-point test set) uses the test-set-based ensemble: **Te → CNN, ne → ProfileNet, Ti → LSTM**. Models are in `profile_nn_models/` (renamed from `profile_nn_models_v4/` after cleanup). All trained with real H-mode data (342 Te + 302 ne + 148 Ti H-mode samples from 52 shots).
 
 **Shared architecture across ProfileNet & LSTM (DeepONet-style):**
 - **Encoder** (branch net): Variable-length scattered points → fixed latent vector `z ∈ R¹²⁸`. ProfileNet uses PointNet SetEncoder (permutation-invariant); LSTM uses 2-layer BiLSTM(hidden=64) with ρ-sorted input.

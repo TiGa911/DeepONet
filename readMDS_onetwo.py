@@ -240,6 +240,23 @@ def readmds(shot, time):
         zeff_array = np.full(shape=51, fill_value=2.5)
         pass
 
+    # %% H98 from energy_east
+    # 读取能量约束因子 H98，用于 H/L 模式判定
+    # 阈值：H98 >= 0.7 为 H-mode（与 fitting_mtanh.judge_plasma_mode 一致）
+    try:
+        conn.openTree('energy_east', shot)
+        H98_times = conn.get(r'dim_of(\H98_MHD)').data()
+        H98_data = conn.get(r'data(\H98_MHD)').data()
+        h98_timeid = np.argmin(abs(H98_times - time))
+        h98_value = float(np.array(H98_data).flatten()[h98_timeid])
+        conn.closeTree('energy_east', shot)
+        print('H98_value:', h98_value)
+    except Exception as H98_ERROR:
+        print('H98_ERROR:', H98_ERROR)
+        h98_value = np.nan
+        H98_times = np.array([])
+        H98_data = np.array([])
+
     # %%
     # CXRS
     # TREE = 'CXRS_EAST'
@@ -322,6 +339,8 @@ def readmds(shot, time):
         status['Refl_status'] = 0
         pass
 
-    data = {'ne': ne, 'Te': Te, 'Ti': Ti, 'zeff':z_eff_value}
-    return data, status,real_time
+    data = {'ne': ne, 'Te': Te, 'Ti': Ti, 'zeff': z_eff_value,
+            'H98': {'value': h98_value, 'time': H98_times, 'data': H98_data}}
+    status['H98'] = h98_value  # 方便调用方快速访问
+    return data, status, real_time
     # return  TXCS_mapped, Refl_mapped
