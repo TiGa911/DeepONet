@@ -31,6 +31,7 @@ sys.path.insert(0, SCRIPT_DIR)
 from metrics_utils import (
     METHOD_SPECS, NN_METHODS, ALL_METHODS, DIAGNOSTICS, DIAGNOSTIC_SPECS,
     ARCHITECTURE_TABLE, ARCHITECTURE_TABLE_H, ARCHITECTURE_TABLE_L,
+    compute_metrics,
 )
 
 parser = argparse.ArgumentParser(description='Generate paper figures from NPZ + metrics')
@@ -192,6 +193,29 @@ def fig_hmode_overlay(metas):
             ax.set_xlim(0, 1)
             ax.set_title(f'Shot {shot}  {td}s  (H98={h98:.2f})', fontsize=10)
             ax.grid(True, alpha=0.3)
+
+            # === 修改版：各面板标注 NN 方法相对 mtanh 的 MAE（与表 2 同口径的定量指标）===
+            # 原始版本无此标注块
+            mt_x, mt_y = load_profile(shot, td, 'mtanh', diag)
+            ann = []
+            if mt_x is not None:
+                for method in NN_METHODS:
+                    x, y = load_profile(shot, td, method, diag)
+                    if x is None:
+                        continue
+                    mae = compute_metrics(mt_y, y, mt_x, x)['MAE']
+                    ann.append((METHOD_SPECS[method]['label'], mae,
+                                METHOD_SPECS[method]['color']))
+            if ann:
+                ax.text(0.02, 1.00, f'MAE vs mtanh [{spec["unit"]}]',
+                        transform=ax.transAxes, va='top', ha='left', fontsize=6.5,
+                        color='black',
+                        bbox=dict(boxstyle='round,pad=0.15', fc='white',
+                                  ec='0.7', alpha=0.85))
+                for i, (label, mae, color) in enumerate(ann):
+                    ax.text(0.04, 0.955 - 0.035 * (i + 1), f'{label}: {mae:.3f}',
+                            transform=ax.transAxes, va='top', ha='left',
+                            fontsize=6.5, color=color)
 
     # 单一共用图例
     handles, labels = axes[0][0].get_legend_handles_labels()
