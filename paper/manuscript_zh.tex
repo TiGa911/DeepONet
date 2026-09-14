@@ -59,7 +59,7 @@ EAST 上剖面拟合的标准方法是改进型双曲正切（mtanh）函数~\ci
 
 机器学习已进入聚变诊断领域：高斯过程回归用于剖面拟合~\cite{gpr_profiles,gpr_review}，贝叶斯集成数据分析~\cite{ida_east}，神经网络用于 TS 时间超分辨~\cite{diag2diag}，以及基于 CNN 的密度剖面重建~\cite{lan_cnn_east}。深度算子网络（DeepONet）~\cite{deeponet} 是专门学习函数空间之间映射的架构，将算子 $G: u \mapsto G(u)$ 分离为编码输入函数的分支网络和编码输出域的主干网络~\cite{physics_informed_deeponet,pinn_review}。分支-主干形式具有本文始终依赖的一个性质：输出 $\hat{y}(\rho) = \sum b_k \cdot t_k(\rho)$ 恒为光滑基函数的线性组合。非物理振荡被结构性地排除，本文将该架构本身视为剖面拟合的\textit{结构性正则化}。
 
-本文提出一种基于 DeepONet 的神经网络，将七步 mtanh 流程替换为单次约 14 ms 前向传播。共对比五种架构——四种（ProfileNet（SetEncoder）、BiLSTM、Transformer 和 CNN-DeepONet）共享同一 CoordDecoder 和物理约束损失，纯 CNN-1D 作为不使用分支-主干结构的控制组——从而实现对架构归纳偏置的受控研究。本文贡献包括：（1）据我们所知，首次将 DeepONet 应用于 EAST TS 剖面拟合；（2）统一条件下的五架构系统对比；（3）受控的 CNN-DeepONet 变体消解编码器/解码器混淆，证明共享主干解码器对稀疏诊断（Ti）有益、对密集诊断（Te、ne）无益；（4）消融实验证明分支-主干结构对静态编码器本身具有正则化作用（移除物理约束后 ProfileNet 和 Transformer 改善 8--12\%，而 CNN-1D 和 LSTM 退化 26--31\%）；（5）发现反映诊断空间采样固有差异的诊断-架构匹配规律；（6）量化下游 LHW 电流驱动影响（平均绝对偏差 22\%，156400 炮；四个 LHW 测试炮合计 28\%），并给出偏差的 $T_e$/$n_e$ 归因分解。
+本文提出一种基于 DeepONet 的神经网络，将七步 mtanh 流程替换为单次约 14 ms 前向传播。共对比五种架构——四种（ProfileNet（SetEncoder）、BiLSTM、Transformer 和 CNN-DeepONet）共享同一 CoordDecoder 和物理约束损失，纯 CNN-1D 作为不使用分支-主干结构的控制组——从而实现对架构归纳偏置的受控研究。本文贡献包括：（1）据我们所知，首次将 DeepONet 应用于 EAST TS 剖面拟合；（2）统一条件下的五架构系统对比；（3）受控的 CNN-DeepONet 变体消解编码器/解码器混淆，证明共享主干解码器对稀疏诊断（Ti）有益、对密集诊断（Te、ne）无益；（4）消融实验证明分支-主干结构对静态编码器本身具有正则化作用（移除物理约束后 ProfileNet 和 Transformer 改善 8--12\%，而 CNN-1D 和 LSTM 退化 26--31\%）；（5）发现反映诊断空间采样固有差异的诊断-架构匹配规律；（6）量化下游 LHW 电流驱动影响（平均绝对偏差 22\%，156400 炮；四个 LHW 测试炮合计 28\%），并给出偏差的 $T_e$/$n_e$ 归因分解。简言之，本文的方法学创新在于两个相互交织的思想：将算子学习结构本身当作内置正则化器；以及通过实验设计（共享主干、受控 CNN-DeepONet 变体、统一物理约束损失）使这一论断可被检验而非仅被假定。
 
 % ===========================================================================
 % 2. 方法
@@ -122,9 +122,11 @@ mtanh 方法通过显式参数化流程实现 $\mathcal{F}$：IQR 异常值剔�
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{paper_results/figures/fig2_hmode_overlay.png}
-\caption{典型 H 模剖面拟合结果：六种方法（mtanh 基线 + 五种 NN 架构）在三个代表性 H 模时间点上对 Te、ne、Ti 三种诊断的对比。每幅面板标注了该时间点上各 NN 架构相对 mtanh 基线的 MAE（与表~\ref{tab:metrics} 同口径）。}
+\caption{典型 H 模剖面拟合结果：六种方法（mtanh 基线 + 五种 NN 架构）在三个代表性 H 模时间点上对 Te、ne、Ti 三种诊断的对比。}
 \label{fig:hmode}
 \end{figure}
+
+在图~\ref{fig:hmode} 中，好的拟合可以直接判读：剖面应穿过芯部诊断通道、复现 mtanh 基线的整体形状，更重要的是在 $\rho = 0.85$--$1.0$ 处跟踪陡峭的台基梯度（H 模物理信息集中之处）；剖面应保持光滑、正值、单调，边缘区域无非物理振荡。过度平滑台基或在边缘振荡的架构，在表~\ref{tab:metrics} 的 MAE 指标上相应地更差——该指标量化的正是这些偏差。
 
 \subsubsection{编码器架构}
 
