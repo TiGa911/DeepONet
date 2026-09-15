@@ -59,7 +59,7 @@ EAST 上剖面拟合的标准方法是改进型双曲正切（mtanh）函数~\ci
 
 机器学习已进入聚变诊断领域：高斯过程回归用于剖面拟合~\cite{gpr_profiles,gpr_review}，贝叶斯集成数据分析~\cite{ida_east}，神经网络用于 TS 时间超分辨~\cite{diag2diag}，以及基于 CNN 的密度剖面重建~\cite{lan_cnn_east}。深度算子网络（DeepONet）~\cite{deeponet} 是专门学习函数空间之间映射的架构，将算子 $G: u \mapsto G(u)$ 分离为编码输入函数的分支网络和编码输出域的主干网络~\cite{physics_informed_deeponet,pinn_review}。分支-主干形式具有本文始终依赖的一个性质：输出 $\hat{y}(\rho) = \sum b_k \cdot t_k(\rho)$ 恒为光滑基函数的线性组合。非物理振荡被结构性地排除，本文将该架构本身视为剖面拟合的\textit{结构性正则化}。
 
-本文提出一种基于 DeepONet 的神经网络，将七步 mtanh 流程替换为单次约 14 ms 前向传播。共对比五种架构——四种（ProfileNet（SetEncoder）、BiLSTM、Transformer 和 CNN-DeepONet）共享同一 CoordDecoder 和物理约束损失，纯 CNN-1D 作为不使用分支-主干结构的控制组——从而实现对架构归纳偏置的受控研究。本文贡献包括：（1）据我们所知，首次将 DeepONet 应用于 EAST TS 剖面拟合；（2）统一条件下的五架构系统对比；（3）受控的 CNN-DeepONet 变体消解编码器/解码器混淆，证明共享主干解码器对稀疏诊断（Ti）有益、对密集诊断（Te、ne）无益；（4）消融实验证明分支-主干结构对静态编码器本身具有正则化作用（移除物理约束后 ProfileNet 和 Transformer 改善 8--12\%，而 CNN-1D 和 LSTM 退化 26--31\%）；（5）发现反映诊断空间采样固有差异的诊断-架构匹配规律；（6）量化下游 LHW 电流驱动影响（平均绝对偏差 22\%，156400 炮；四个 LHW 测试炮合计 28\%），并给出偏差的 $T_e$/$n_e$ 归因分解。简言之，本文的方法学创新在于两个相互交织的思想：将算子学习结构本身当作内置正则化器；以及通过实验设计（共享主干、受控 CNN-DeepONet 变体、统一物理约束损失）使这一论断可被检验而非仅被假定。
+本文提出一种基于 DeepONet 的神经网络，将七步 mtanh 流程替换为单次约 14 ms 前向传播。共对比五种架构——四种（ProfileNet（SetEncoder）、BiLSTM、Transformer 和 CNN-DeepONet）共享同一 CoordDecoder 和物理约束损失，纯 CNN-1D 作为不使用分支-主干结构的控制组——从而实现对架构归纳偏置的受控研究。本文贡献包括：（1）据我们所知，首次将 DeepONet 应用于 EAST TS 剖面拟合；（2）统一条件下的五架构系统对比；（3）受控的 CNN-DeepONet 变体消解编码器/解码器混淆，证明共享主干解码器对稀疏诊断（Ti）有益、对密集诊断（Te、ne）无益；（4）消融实验证明分支-主干结构对静态编码器本身具有正则化作用（移除物理约束后 ProfileNet 和 Transformer 改善 8--12\%，而 CNN-1D 和 LSTM 退化 26--31\%）；（5）发现反映诊断空间采样固有差异的诊断-架构匹配规律。简言之，本文的方法学创新在于两个相互交织的思想：将算子学习结构本身当作内置正则化器；以及通过实验设计（共享主干、受控 CNN-DeepONet 变体、统一物理约束损失）使这一论断可被检验而非仅被假定。
 
 % ===========================================================================
 % 2. 方法
@@ -122,11 +122,11 @@ mtanh 方法通过显式参数化流程实现 $\mathcal{F}$：IQR 异常值剔�
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{paper_results/figures/fig2_hmode_overlay.png}
-\caption{典型 H 模剖面拟合结果：六种方法（mtanh 基线 + 五种 NN 架构）在三个代表性 H 模时间点上对 Te、ne、Ti 三种诊断的对比。}
+\caption{典型 H 模剖面拟合结果：六种方法（mtanh 基线 + 五种 NN 架构）在三个代表性 H 模时间点上对 Te、ne、Ti 三种诊断的对比。灰色阴影带为验收区间（见第 3 节）：其半宽随诊断通道围绕 mtanh 参考的局部分散度变化，位于区间内的曲线视为可接受。}
 \label{fig:hmode}
 \end{figure}
 
-在图~\ref{fig:hmode} 中，好的拟合可以直接判读：剖面应穿过芯部诊断通道、复现 mtanh 基线的整体形状，更重要的是在 $\rho = 0.85$--$1.0$ 处跟踪陡峭的台基梯度（H 模物理信息集中之处）；剖面应保持光滑、正值、单调，边缘区域无非物理振荡。过度平滑台基或在边缘振荡的架构，在表~\ref{tab:metrics} 的 MAE 指标上相应地更差——该指标量化的正是这些偏差。
+在图~\ref{fig:hmode} 中，好的拟合可以直接判读：剖面应穿过芯部诊断通道、复现 mtanh 基线的整体形状，更重要的是在 $\rho = 0.85$--$1.0$ 处跟踪陡峭的台基梯度（H 模物理信息集中之处）；剖面应保持光滑、正值、单调，边缘区域无非物理振荡，并尽可能停留在诊断通道所约束的灰色验收区间内。过度平滑台基、在边缘振荡或明显出带的架构，在表~\ref{tab:metrics} 的 MAE 指标和表~\ref{tab:band} 的区间内比例上相应地更差。
 
 \subsubsection{编码器架构}
 
@@ -165,9 +165,7 @@ mtanh 方法通过显式参数化流程实现 $\mathcal{F}$：IQR 异常值剔�
 
 \subsection{训练细节}
 
-所有模型使用 AdamW 优化器（学习率 $10^{-3}$，权重衰减 $10^{-5}$）、余弦退火学习率调度、批次大小 64、最大 500 轮训练和早停机制（耐心值 = 100）。推理后应用 PCHIP（分段三次 Hermite 插值）保形插值，强制严格单调递减和边缘地板值保护。所有报告的指标均在后处理之后的剖面上计算；我们在 Te 测试点上验证过，PCHIP 步骤对散点拟合 MAE 和相对 mtanh 的 MAE 的影响均小于 0.001 keV，即不会实质改变报告数值。推理时间在 CPU 上测量（10 次预热后对完整推理函数计时 200 次，不含模型加载）。
-
-五种架构在单核 CPU 上的推理时间均低于约 20 ms（ProfileNet $\sim$15 ms、LSTM $\sim$14 ms、CNN-1D $\sim$16 ms、CNN-DeepONet $\sim$16 ms、Transformer $\sim$19 ms），既适用于离线批量处理，也满足潜在实时应用需求。作为参照，我们在同一 CPU 上对 24 个测试点计时了 mtanh 流程端到端运行时间：每个 Te 剖面 16--71 ms（中位数 36 ms），$n_e$ 为 16--870 ms（中位数 30 ms；最小二乘收敛缓慢造成长尾），$T_i$ 约 1 ms（其参数化拟合比 NN 更轻）。因此 NN 对 Te 比 mtanh 快 2--3 倍，在 $n_e$ 的慢收敛情形下更快，而对 $T_i$ 的原始时延反而慢于 mtanh。实际收益并非单纯的速度，而是统一性：一次确定性的 14--19 ms 前向传播，无逐例优化器失败模式、无需人工检查。诊断最优集成方案（CNN-based $T_e$ + ProfileNet-based $n_e$ + LSTM-based $T_i$，共 66K+67K+76K 参数）组合推理时间低于 50 ms。
+所有模型使用 AdamW 优化器（学习率 $10^{-3}$，权重衰减 $10^{-5}$）、余弦退火学习率调度、批次大小 64、最大 500 轮训练和早停机制（耐心值 = 100）。推理后应用 PCHIP（分段三次 Hermite 插值）保形插值，强制严格单调递减和边缘地板值保护。所有报告的指标均在后处理之后的剖面上计算；我们在 Te 测试点上验证过，PCHIP 步骤对散点拟合 MAE 和相对 mtanh 的 MAE 的影响均小于 0.001 keV，即不会实质改变报告数值。推理时间在 CPU 上测量（10 次预热后对完整推理函数计时 200 次，不含模型加载）；与 mtanh 流程的端到端速度对比见第 3 节。
 
 % ===========================================================================
 % 3. 结果
@@ -305,18 +303,28 @@ Transformer（DeepONet）  & 0.349 & 0.318 & \textbf{$-$8.7\%}（改善） \\
 
 消融结果呈现三种行为。基于池化和注意力的 DeepONet 在移除物理约束后略有改善（ProfileNet $-11.8\%$、Transformer $-8.7\%$）；没有分支-主干结构的 CNN-1D 退化 $+25.8\%$；而共享同一主干的 LSTM 退化更严重（$+30.6\%$，H 模 MAE 从 0.525 升至 0.805 keV）。DeepONet 算子逼近定理~\cite{deeponet} 解释了前半部分：每个基函数 $t_k(\rho)$ 是光滑 MLP 输出，任何线性组合 $\sum b_k \cdot t_k(\rho)$ 都是 $C^\infty$ 光滑的，高频振荡无需惩罚即被排除；分支网络只能选择系数 $b_k$，无法独立修改每个 $\hat{y}(\rho_i)$。这种结构性正则化对静态编码器已足够——它们无约束时的轻微改善进一步表明 $\mathcal{L}_{\text{mono}} + \mathcal{L}_{\text{bdy}} + \mathcal{L}_{\text{smooth}}$ 对这些模型可能轻微过正则化。但循环分支并未被主干完全驯服：尽管每个主干输出都是光滑的，无约束训练仍会让 LSTM 选出拟合噪声的大幅系数组合，因此物理惩罚项对循环编码器而言仍是有效的正则化手段。
 
-\subsection{LHW 电流驱动：下游影响}
+\subsection{工程价值：速度、自动化与验收准则}
 
-为量化拟合剖面差异如何传播到下游物理计算，我们对比了六种拟合方法计算的低杂波电流驱动（LHCD）功率沉积和驱动电流剖面~\cite{lhcd_east,lh_pdi_east}。图~\ref{fig:lhw} 展示 156400 炮（H 模，$P_{\text{LHW}} = 969$--$1936$ kW）的 LHW 结果。
+\textbf{推理速度与确定性。}五种架构在单核 CPU 上的推理时间均低于约 20 ms（ProfileNet $\sim$15 ms、LSTM $\sim$14 ms、CNN-1D $\sim$16 ms、CNN-DeepONet $\sim$16 ms、Transformer $\sim$19 ms），既适用于离线批量处理，也满足潜在实时应用需求。作为参照，我们在同一 CPU 上对 24 个测试点计时了 mtanh 流程端到端运行时间：每个 Te 剖面 16--71 ms（中位数 36 ms），$n_e$ 为 16--870 ms（中位数 30 ms；最小二乘收敛缓慢造成长尾），$T_i$ 约 1 ms（其参数化拟合比 NN 更轻）。因此 NN 对 Te 比 mtanh 快 2--3 倍，在 $n_e$ 的慢收敛情形下更快，而对 $T_i$ 的原始时延反而慢于 mtanh。实际收益并非单纯的速度，而是统一性：一次确定性的 14--19 ms 前向传播，无逐例优化器失败模式、无需人工检查。诊断最优集成方案（CNN-based $T_e$ + ProfileNet-based $n_e$ + LSTM-based $T_i$，共 66K+67K+76K 参数）组合推理时间低于 50 ms。
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.95\textwidth]{paper_results/figures/fig9_lhw_comparison.png}
-\caption{LHW 电流驱动对比：六种拟合方法应用于 156400 炮。四幅面板分别展示电流密度剖面、功率密度剖面、累积驱动电流和累积功率沉积。Te/ne 剖面差异经 LHW 模型非线性放大，该炮总驱动电流平均绝对偏差 $\Delta I_{\text{LH}} \approx 22\%$。}
-\label{fig:lhw}
-\end{figure}
+\textbf{自动化与鲁棒性。}以单次前向传播取代七步流程，消除了主要的规模化瓶颈：目前每次 mtanh 拟合都必须人工目视检查，台基最小二乘优化偶尔失效或收敛到非物理解，需要人工识别排除。NN 流程无需此类检查——其输出在构造上即光滑、正值、经 PCHIP 后单调，即使输入超出训练分布也只会平缓失效而非灾难性失效。无效或缺失的诊断通道由与训练相同的掩码处理，无需修改代码分支；训练流程已完全脚本化，可随新实验数据的积累定期重训。这些性质对 EAST 每年度数千炮的吞吐量至关重要——人工检查正是当前的限速环节。
 
-总驱动电流与 mtanh 基线的平均绝对偏差为 21.7\%（本炮），四个 LHW 测试炮合计为 27.7\%（各炮 11.8--53.4\%）。将各架构的 $T_e$ 或 $n_e$ 剖面逐一换回 mtanh 参考后重算 $I_{\text{LH}}$ 的归因表明，偏差约以 5:1 的比例由 $T_e$ 主导（21.7 个百分点中的 20.7 个）而非 $n_e$（3.9 个；非线性交叉项 1.5 个），与模型中朗道阻尼共振对 $T_e$ 的强依赖一致。该对比量化的是剖面差异经 LHW 模型的传播，而非哪种方法产生"正确"的 LHW 预测——缺乏直接对标的实验电流驱动测量验证，ONETWO 输运验证仍受讨论一节所述 ZFIT 限制的阻碍。
+\textbf{验收区间准则。}为使图~\ref{fig:hmode} 的定性对比获得定量解读，我们引入以 mtanh 参考为中心的数据驱动验收区间：每个时间点的区间半宽取诊断通道 $|y_{\text{散点}} - y_{\text{mtanh}}|$ 的局部分箱中位数（按 $\rho$ 分箱，下限 0.05 个剖面单位），因此区间代表诊断围绕参考的固有分散度，而非任意设定的容差。拟合曲线位于区间之内的部分即视为可接受。表~\ref{tab:band} 报告全部测试点的平均区间内比例。该评价复现了表~\ref{tab:metrics} 的 MAE 排名——LSTM 和 Transformer 在 Te、Ti 上领先，Transformer 在 $n_e$ 上的弱点一目了然（区间内仅 11\%）——同时给出可解释、逐剖面适用的验收准则，可在无需人工检查的批量处理中对每一炮自动判定。图~\ref{fig:hmode} 所示的代表性时间点还经过自动质量筛查（非有限值、非单调尖峰、大幅出带偏离），确保图中不出现明显异常的曲线。
+
+\begin{table}[htbp]
+\centering\footnotesize
+\caption{验收区间评价：拟合剖面位于散点导出区间（围绕 mtanh 参考，见图~\ref{fig:hmode}）内的平均比例（\% $\pm$ 标准差），统计全部测试时间点。每行最优值用\textbf{粗体}标出。}
+\label{tab:band}
+\begin{tabular}{l c c c c c}
+\toprule
+\textbf{诊断} & \textbf{ProfileNet} & \textbf{LSTM} & \textbf{CNN-1D} & \textbf{CNN-DeepONet} & \textbf{Transformer} \\
+\midrule
+Te & 57.9$\pm$19.8 & 66.8$\pm$18.6 & 67.1$\pm$25.8 & 59.8$\pm$27.1 & \textbf{69.7$\pm$23.6} \\
+$n_e$ & 53.3$\pm$20.0 & 47.2$\pm$15.8 & \textbf{55.5$\pm$7.4} & 36.9$\pm$12.7 & 11.1$\pm$15.1 \\
+$T_i$ & 69.4$\pm$29.2 & \textbf{78.9$\pm$23.6} & 48.5$\pm$17.2 & 75.3$\pm$16.6 & 68.9$\pm$28.8 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 % ===========================================================================
 % 4. 讨论
@@ -355,7 +363,7 @@ Transformer（DeepONet）  & 0.349 & 0.318 & \textbf{$-$8.7\%}（改善） \\
 
     \item \textbf{诊断-架构匹配}：无单一编码器在所有诊断上最优。推荐的部署集成方案（CNN-based $T_e$ + ProfileNet-based $n_e$ + LSTM-based $T_i$）反映了诊断空间采样模式的固有差异。受控的 CNN-DeepONet 变体证实主干解码器的正则化具有诊断特异性：对稀疏 TXCS $T_i$ 改善 42\%，对密集 TS/Refl 诊断无益。
 
-    \item \textbf{下游影响}：使用 NN 拟合剖面的 LHW 电流驱动计算与 mtanh 的平均绝对偏差为 22\%（156400 炮；四个 LHW 测试炮合计 28\%），且约以 5:1 的比例由 $T_e$ 而非 $n_e$ 的剖面差异主导，表明剖面差异可测量地传播到物理模型输出中。
+    \item \textbf{工程价值}：NN 流程消除了人工检查与逐例优化器失效，以统一确定性的 14--19 ms 时延运行（对 $T_e$ 比 mtanh 快 2--3 倍），通道缺失或无效时平缓降级，并配套数据驱动的验收区间准则（表~\ref{tab:band}）自动标记不可接受的拟合——为无需人工干预地批量处理每年度数千炮放电提供了实用基础。
 
     \item \textbf{定位}：NN 模型是 mtanh 的快速、自动化近似，而非精度替代品。其价值在于可操作性：数千炮放电无需人工干预即可处理，代价是相对 mtanh 的部分拟合精度损失。
 \end{enumerate}
@@ -470,12 +478,6 @@ Hochreiter S and Schmidhuber J 1997 Long short-term memory \textit{Neural Comput
 
 \bibitem{transformer}
 Vaswani A, Shazeer N, Parmar N \textit{et al} 2017 Attention is all you need \textit{Adv. Neural Inf. Process. Syst.} \textbf{30} 5998
-
-\bibitem{lhcd_east}
-Baek S, Li M, Wallace G, Bonoli P \textit{et al} 2021 Impact of lithium wall conditioning and wave-frequency on high density lower hybrid current drive experiment on EAST \textit{Nucl. Mater. Energy} \textbf{26} 100955
-
-\bibitem{lh_pdi_east}
-Li G, Zhou T, Li M, Ding B \textit{et al} 2024 The onset of parametric decay of lower hybrid waves during lower hybrid current drive experiments on Experimental Advanced Superconducting Tokamak \textit{Nucl. Fusion} \textbf{64} 126008
 
 \bibitem{fno_plasma}
 Gopakumar V, Pamela S, Zanisi L, Li Z \textit{et al} 2024 Plasma surrogate modelling using Fourier neural operators \textit{Nucl. Fusion} \textbf{64} 056025

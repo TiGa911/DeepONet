@@ -148,17 +148,121 @@ def select_representative_points(metas, n=2, mode='H'):
 
 
 # ================================================================
+# 验收区间评价体系（修改版新增）
+# ================================================================
+
+BAND_FLOOR = {'Te': 0.05, 'ne': 0.05, 'Ti': 0.05}  # 半宽下限（避免零宽）
+ANOMALY_K = 3.0  # 异常判定：超出区间半宽的 K 倍视为明显异常
+
+
+def build_acceptance_band(shot, time_dir, diag):
+    """以 mtanh 参考剖面为中心、以诊断散点的局部分散度为半宽，构建验收区间。
+
+    半宽 = |散点 − mtanh| 按 ρ 分 20 箱的滑动中位数，插值到 201 网格后平滑；
+    与诊断相关的下限取 max（避免零宽）。返回 (rho_201, lower, upper, halfwidth)。
+    """
+    mt_x, mt_y = load_profile(shot, time_dir, 'mtanh', diag)
+    sx, sy = load_scatter(shot, time_dir, diag)
+    if mt_x is None or sx is None:
+        return None
+    if diag == 'Te':
+        sy = sy / 1000.0  # eV -> keV
+    rho_201 = np.linspace(0, 1, 201)
+    mt_at_s = np.interp(sx, mt_x, mt_y)
+    resid = np.abs(sy - mt_at_s)
+    bins = np.linspace(0, 1, 21)
+    centers, vals = [], []
+    for i in range(20):
+        m = (sx >= bins[i]) & (sx < bins[i + 1])
+        if m.sum() >= 2:
+            centers.append((bins[i] + bins[i + 1]) / 2)
+            vals.append(np.median(resid[m]))
+    if centers:
+        spread = np.interp(rho_201, np.array(centers), np.array(vals))
+        spread = np.convolve(spread, np.ones(9) / 9, mode='same')
+        spread = np.maximum(spread, BAND_FLOOR.get(diag, 0.05))
+    else:
+        spread = np.full(201, BAND_FLOOR.get(diag, 0.05))
+    y_mt = np.interp(rho_201, mt_x, mt_y)
+    lower = np.maximum(y_mt - spread, 0.0)
+    upper = y_mt + spread
+    return rho_201, lower, upper, spread
+
+
+def in_band_fraction(shot, time_dir, diag, method, band=None):
+    """某方法曲线落在验收区间内的网格点比例。"""
+    if band is None:
+        band = build_acceptance_band(shot, time_dir, diag)
+    if band is None:
+        return None
+    x, y = load_profile(shot, time_dir, method, diag)
+    if x is None:
+        return None
+    rho_201, lower, upper, _ = band
+    yy = np.interp(rho_201, x, y)
+    return float(np.mean((yy >= lower) & (yy <= upper)))
+
+
+def qc_anomalies(shot, time_dir):
+    """返回该时间点的异常标记列表（非有限值 / 强非单调 / 大幅偏离）。
+
+    阈值取 max(3×区间半宽, 0.5×剖面跨度)，只拦截明显异常而非普通拟合偏差。
+    """
+    flags = []
+    for diag in DIAGNOSTICS:
+        band = build_acceptance_band(shot, time_dir, diag)
+        if band is None:
+            continue
+        rho_201, lower, upper, half = band
+        for method in ALL_METHODS:
+            x, y = load_profile(shot, time_dir, method, diag)
+            if x is None:
+                continue
+            yy = np.interp(rho_201, x, y)
+            if not np.isfinite(yy).all():
+                flags.append(f'{method}_{diag}: non-finite')
+                continue
+            d = np.diff(yy)
+            span = yy.max() - yy.min() + 1e-9
+            if d[20:180].max() > 0.3 * span:
+                flags.append(f'{method}_{diag}: non-monotone spike')
+            tol = np.maximum(ANOMALY_K * half, 0.5 * span)
+            out = (yy < lower - tol) | (yy > upper + tol)
+            if out.mean() > 0.25:
+                flags.append(f'{method}_{diag}: {out.mean()*100:.0f}% far outside band')
+    return flags
+
+
+def filter_by_qc(scored, n):
+    """从候选列表中选出通过 QC 的前 n 个点（每炮最多 1 个）。"""
+    selected, used_shots = [], set()
+    for shot, td, h98, meta in scored:
+        if shot in used_shots:
+            continue
+        flags = qc_anomalies(shot, td)
+        if flags:
+            print(f'  QC skip {shot} {td}: {"; ".join(flags)}')
+            continue
+        selected.append((shot, td, h98, meta))
+        used_shots.add(shot)
+        if len(selected) >= n:
+            break
+    return selected
+
+
+# ================================================================
 # Figure 2: H-mode 典型剖面叠加
 # ================================================================
 
 def fig_hmode_overlay(metas):
-    """3 diag × 3 columns H-mode overlay."""
-    selected = select_representative_points(metas, n=3, mode='H')
+    """3 diag × 3 columns H-mode overlay（QC 过滤 + 验收区间标注）。"""
+    scored = select_representative_points(metas, n=len(metas), mode='H')
+    selected = filter_by_qc(scored, 3)
     if not selected:
-        print('  No H-mode points found, using all available')
-        scored = [(s, td, meta.get('h98', 0), meta) for (s, td), meta in metas.items()]
-        scored.sort(key=lambda x: x[2], reverse=True)
-        selected = [(s, td, h, m) for s, td, h, m in scored[:3]]
+        print('  No H-mode points passed QC, using first available')
+        fallback = [(s, td, meta.get('h98', 0), meta) for (s, td), meta in metas.items()]
+        fallback.sort(key=lambda x: x[2], reverse=True)
+        selected = [(s, td, h, m) for s, td, h, m in fallback[:3]]
 
     n_cols = len(selected)
     fig, axes = plt.subplots(3, n_cols, figsize=(6 * n_cols, 14), dpi=300)
@@ -167,6 +271,7 @@ def fig_hmode_overlay(metas):
     fig.suptitle('Typical H-mode Profile Fitting — 6 Methods Comparison',
                  fontsize=14, fontweight='bold', y=0.995)
 
+    acceptance_rows = []
     for col, (shot, td, h98, meta) in enumerate(selected):
         for row, diag in enumerate(DIAGNOSTICS):
             ax = axes[row][col]
@@ -178,6 +283,13 @@ def fig_hmode_overlay(metas):
                 if diag == 'Te':
                     sy = sy / 1000.0  # eV → keV
                 ax.scatter(sx, sy, marker='.', c='gray', alpha=0.3, s=6, zorder=1)
+
+            # === 修改版：验收区间（灰色阴影带，由散点局部分散度导出）===
+            band = build_acceptance_band(shot, td, diag)
+            if band is not None:
+                rho_b, lower_b, upper_b, _ = band
+                ax.fill_between(rho_b, lower_b, upper_b, color='gray',
+                                alpha=0.18, linewidth=0, zorder=0.5)
 
             # 各方法
             for method in ALL_METHODS:
@@ -192,6 +304,29 @@ def fig_hmode_overlay(metas):
             ax.set_xlim(0, 1)
             ax.set_title(f'Shot {shot}  {td}s  (H98={h98:.2f})', fontsize=10)
             ax.grid(True, alpha=0.3)
+
+            # 验收区间通过率（QC 报告用，不画在图上）
+            for method in NN_METHODS:
+                frac = in_band_fraction(shot, td, diag, method, band=band)
+                if frac is not None:
+                    acceptance_rows.append({
+                        'shot': shot, 'time_dir': td, 'diag': diag,
+                        'method': METHOD_SPECS[method]['label'],
+                        'in_band%': round(frac * 100, 1),
+                    })
+    print('  Fig 2 acceptance (in-band % per panel):')
+    for r in acceptance_rows:
+        print(f"    {r['shot']} {r['time_dir']} {r['diag']:>3s} "
+              f"{r['method']:>14s}: {r['in_band%']:5.1f}%")
+
+    # 保存验收率 CSV
+    import csv as _csv
+    csv_path = os.path.join(FIG_DIR, 'fig2_acceptance.csv')
+    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+        w = _csv.DictWriter(f, fieldnames=['shot', 'time_dir', 'diag', 'method', 'in_band%'])
+        w.writeheader()
+        w.writerows(acceptance_rows)
+    print(f'  fig2_acceptance.csv saved ({len(acceptance_rows)} rows)')
 
     # 单一共用图例
     handles, labels = axes[0][0].get_legend_handles_labels()
