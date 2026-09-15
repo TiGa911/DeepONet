@@ -121,12 +121,30 @@ def select_representative_points(metas, n=2, mode='H'):
     valid = [(s, td, h, m) for s, td, h, m in scored_all if h > 0.001]
 
     if mode == 'H':
-        # H-mode: H98 >= 0.7, 降序
+        # === 修改版：选 H 模典型点（最接近 H 模 H98 中位数的点；
+        #             并列时按验收率均值取更典型的点）
+        # 原始版本（保留参考）：
+        # hmode = [...]; scored = sorted(hmode, key=lambda x: x[2], reverse=True)  # H98 降序（最难情形）
         hmode = [(s, td, h, m) for s, td, h, m in valid if h >= 0.7]
-        if hmode:
-            scored = sorted(hmode, key=lambda x: x[2], reverse=True)
-        else:
-            scored = sorted(valid, key=lambda x: x[2], reverse=True)
+        if not hmode:
+            hmode = [(s, td, h, m) for s, td, h, m in valid]
+        med = float(np.median([h for _, _, h, _ in hmode]))
+
+        def score(entry):
+            s, td, h, _m = entry
+            accs = []
+            for diag in DIAGNOSTICS:
+                band = build_acceptance_band(s, td, diag)
+                if band is None:
+                    continue
+                for meth in NN_METHODS:
+                    f = in_band_fraction(s, td, diag, meth, band=band)
+                    if f is not None:
+                        accs.append(f)
+            mean_acc = float(np.mean(accs)) if accs else 0.0
+            return (abs(h - med), -mean_acc)
+
+        scored = sorted(hmode, key=score)
     else:
         # L-mode: H98 < 0.7, 升序
         lmode = [(s, td, h, m) for s, td, h, m in valid if h < 0.7]
@@ -373,6 +391,13 @@ def fig_lmode_overlay(metas):
                 if diag == 'Te':
                     sy = sy / 1000.0
                 ax.scatter(sx, sy, marker='.', c='gray', alpha=0.3, s=6, zorder=1)
+
+            # === 修改版：验收区间（与图 2 同口径）===
+            band = build_acceptance_band(shot, td, diag)
+            if band is not None:
+                rho_b, lower_b, upper_b, _ = band
+                ax.fill_between(rho_b, lower_b, upper_b, color='gray',
+                                alpha=0.18, linewidth=0, zorder=0.5)
 
             for method in ALL_METHODS:
                 ms = METHOD_SPECS[method]
