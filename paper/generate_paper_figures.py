@@ -486,10 +486,11 @@ def fig_peakedness_scatter(metrics_rows):
         print('  No metrics data, skipping fig5')
         return
 
-    # === 修改版：扩充测试集配色（156900；156200 已整体排除）===
+    # === 修改版：扩充测试集配色（156900 + 2025 新炮 158100/158500）===
     shot_colors = {156005: '#E63946', 156010: '#2A9D8F',
                    156100: '#457B9D', 156400: '#F4A261',
-                   156900: '#27AE60'}
+                   156900: '#27AE60', 158100: '#8E44AD',
+                   158500: '#D4A017'}
 
     fig, axes = plt.subplots(3, len(NN_METHODS), figsize=(5 * len(NN_METHODS), 14), dpi=300)
     fig.suptitle('Core Peakedness: NN vs mtanh (Reference)',
@@ -632,7 +633,7 @@ def fig_architecture_table():
     fig, axes = plt.subplots(3, 1, figsize=(16, 10), dpi=200,
                               gridspec_kw={'height_ratios': [1, 1, 1]})
 
-    titles = ['All (24 time points)', 'H-mode (8 time points)', 'L-mode (10 time points)']
+    titles = ['All (33 time points)', 'H-mode (14 time points)', 'L-mode (10 time points)']
     tables_data = [ARCHITECTURE_TABLE, ARCHITECTURE_TABLE_H, ARCHITECTURE_TABLE_L]
 
     for idx, ax in enumerate(axes):

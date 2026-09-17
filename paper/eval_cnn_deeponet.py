@@ -38,8 +38,8 @@ RESULT_BASE = os.path.join(SCRIPT_DIR, 'paper_results')
 # === 原始版本（保留参考）===
 # TEST_SHOTS = [156005, 156010, 156100, 156400]
 
-# === 修改版：扩充测试集，加入 156900（156200 因 EFIT 覆盖不足整体排除）===
-TEST_SHOTS = [156005, 156010, 156100, 156400, 156900]
+# === 修改版：扩充测试集，加入 156900 + 2025 新炮 158100/158500 ===
+TEST_SHOTS = [156005, 156010, 156100, 156400, 156900, 158100, 158500]
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--shot', type=int, default=None)
