@@ -1,0 +1,5 @@
+python3 -c "
+import netCDF4
+nc = netCDF4.Dataset('statefile.nc')
+print(list(nc.variables.keys()))
+"

@@ -28,10 +28,49 @@ from profile_nn.cnn_baseline import (
     scatter_to_grid,
 )
 
-# Re-export with consistent naming convention
-nn_fit_te_cnn = cnn_fit_te
-nn_fit_ne_cnn = cnn_fit_ne
-nn_fit_ti_cnn = cnn_fit_ti
+# === 原始版本（保留参考）：直接重导出，无后处理 ===
+# nn_fit_te_cnn = cnn_fit_te
+# nn_fit_ne_cnn = cnn_fit_ne
+# nn_fit_ti_cnn = cnn_fit_ti
+# _load_model = _load_cnn_model  # alias for internal use
+
+# === 修改版：CNN-1D 输出追加少节点单调 PCHIP 平滑（2026-10-08）===
+# 原因：纯卷积解码器的原始输出存在平台状台阶（见论文计划 §十五），
+# 与其他架构的 PCHIP 后处理声明不一致；本修改将台阶平滑为单调光滑曲线，
+# MAE 变化 < 1%（knots=16 时 33 点均值 0.337→0.337）。
+import numpy as _np
+from scipy.interpolate import PchipInterpolator as _PchipInterpolator
+
+_KNOTS = 16
+_FLOOR = {'Te': 0.005, 'ne': 0.001, 'Ti': 0.005}
+
+
+def _postprocess_cnn(y, diag):
+    """少节点单调 PCHIP 平滑：消除平台台阶，保持单调递减与整体形状。"""
+    y = _np.asarray(y, dtype=_np.float64)
+    idx = _np.linspace(0, len(y) - 1, _KNOTS).astype(int)
+    v = y[idx]
+    v = _np.maximum.accumulate(v[::-1])[::-1]  # 后缀最大投影：保证单调递减
+    pchip = _PchipInterpolator(idx / (len(y) - 1), v)
+    yy = pchip(_np.linspace(0, 1, len(y)))
+    return _np.maximum(yy, _FLOOR[diag])
+
+
+def nn_fit_te_cnn(rho_scattered, te_scattered):
+    rho_201, te_201 = cnn_fit_te(rho_scattered, te_scattered)
+    return rho_201, _postprocess_cnn(te_201, 'Te')
+
+
+def nn_fit_ne_cnn(rho_scattered, ne_scattered):
+    rho_201, ne_201 = cnn_fit_ne(rho_scattered, ne_scattered)
+    return rho_201, _postprocess_cnn(ne_201, 'ne')
+
+
+def nn_fit_ti_cnn(rho_txcs, ti_keV, te_ped_x=None, te_ped_y=None):
+    rho_201, ti_201 = cnn_fit_ti(rho_txcs, ti_keV, te_ped_x, te_ped_y)
+    return rho_201, _postprocess_cnn(ti_201, 'Ti')
+
+
 _load_model = _load_cnn_model  # alias for internal use
 
 

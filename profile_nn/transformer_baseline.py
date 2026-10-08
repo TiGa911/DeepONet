@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from profile_nn.dataset import ProfileDataset, StratifiedProfileDataset, collate_fn
+from profile_nn.dataset import ProfileDataset, collate_fn
 from profile_nn.model import PhysicsConstrainedLoss, CoordDecoder
 
 
@@ -55,7 +55,13 @@ class TransformerEncoder(nn.Module):
             d_model=hidden, nhead=num_heads, dim_feedforward=ffn_dim,
             dropout=dropout, activation='gelu', batch_first=True,
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        # === 修改版（2026-10-08）：禁用嵌套张量快速路径，保证 CPU 推理确定性 ===
+        # 原始版本（保留参考）：
+        # self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        # 原因：torch 2.x 默认 enable_nested_tensor=True，在带 padding mask 的
+        # CPU 推理中非确定（同一输入三次推理 max|Δ|≈0.8 keV），见论文计划 §十五。
+        self.transformer = nn.TransformerEncoder(
+            encoder_layer, num_layers=num_layers, enable_nested_tensor=False)
         self.hidden = hidden
         self.max_len = max_len
 
@@ -91,9 +97,15 @@ class TransformerEncoder(nn.Module):
             sort_idx = torch.argsort(pts[:, 0])  # sort by rho
             pts = pts[sort_idx]
 
-            # Subsample long sequences to max_len (random subset, keeps first/last)
+            # Subsample long sequences to max_len (keeps first/last)
             if n > self.max_len:
-                mid = torch.randperm(n - 2, device=x.device)[:self.max_len - 2] + 1
+                # === 修改版（2026-10-08）：确定性等间隔抽样，修复推理非确定性 ===
+                # 原始版本（保留参考）：
+                # mid = torch.randperm(n - 2, device=x.device)[:self.max_len - 2] + 1
+                # 原因：原随机抽样在推理时每次抽取不同通道子集，同一输入输出
+                # 差异达 ~0.8 keV（max_len=35，而 TS 通道数 30-37），见论文计划 §十五。
+                mid = torch.linspace(1, n - 2, self.max_len - 2,
+                                     device=x.device).round().long()
                 keep = torch.cat([torch.zeros(1, device=x.device, dtype=torch.long),
                                   mid,
                                   torch.full((1,), n - 1, device=x.device, dtype=torch.long)])
@@ -216,11 +228,10 @@ class TransformerProfileNet_Ti(nn.Module):
 # ===========================================================================
 
 def train_transformer_model(datatype, data_dir, output_dir, epochs=500, batch_size=64,
-                            lr=1e-3, w_mono=0.05, w_bdy=0.05, w_smooth=0.01, w_log=0.1,
+                            lr=1e-3, w_mono=0.05, w_bdy=0.05, w_smooth=0.01,
                             patience=100, device='cpu',
                             hidden=64, num_layers=2, num_heads=4, ffn_dim=256,
-                            dropout=0.1, max_len=None,
-                            split_method='random', plasma_mode='all'):
+                            dropout=0.1, max_len=None):
     """Train a Transformer baseline model."""
 
     # Auto-select max_len per datatype (covers dataset max sequence lengths)
@@ -233,14 +244,8 @@ def train_transformer_model(datatype, data_dir, output_dir, epochs=500, batch_si
     print(f"{'='*60}")
 
     # Datasets (same split as ProfileNet/LSTM/CNN)
-    if split_method == 'stratified':
-        train_ds = StratifiedProfileDataset(data_dir, datatype, split='train',
-                                            plasma_mode=plasma_mode)
-        val_ds = StratifiedProfileDataset(data_dir, datatype, split='val',
-                                          plasma_mode=plasma_mode)
-    else:
-        train_ds = ProfileDataset(data_dir, datatype, split='train')
-        val_ds = ProfileDataset(data_dir, datatype, split='val')
+    train_ds = ProfileDataset(data_dir, datatype, split='train')
+    val_ds = ProfileDataset(data_dir, datatype, split='val')
     print(f"Train: {len(train_ds)} samples  |  Val: {len(val_ds)} samples")
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
@@ -263,7 +268,7 @@ def train_transformer_model(datatype, data_dir, output_dir, epochs=500, batch_si
     print(f"  hidden={hidden}, layers={num_layers}, heads={num_heads}, ffn={ffn_dim}")
 
     # Loss & optimizer
-    criterion = PhysicsConstrainedLoss(w_mono=w_mono, w_bdy=w_bdy, w_smooth=w_smooth, w_log=w_log)
+    criterion = PhysicsConstrainedLoss(w_mono=w_mono, w_bdy=w_bdy, w_smooth=w_smooth)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
@@ -342,7 +347,7 @@ def train_transformer_model(datatype, data_dir, output_dir, epochs=500, batch_si
             'hidden': hidden, 'num_layers': num_layers, 'num_heads': num_heads,
             'ffn_dim': ffn_dim, 'dropout': dropout, 'num_output': 201,
             'max_len': max_len,
-            'w_mono': w_mono, 'w_bdy': w_bdy, 'w_smooth': w_smooth, 'w_log': w_log,
+            'w_mono': w_mono, 'w_bdy': w_bdy, 'w_smooth': w_smooth,
             'n_params': n_params,
         },
     }, save_path)
@@ -369,11 +374,6 @@ def main():
     parser.add_argument('--w-mono', type=float, default=0.05)
     parser.add_argument('--w-bdy', type=float, default=0.05)
     parser.add_argument('--w-smooth', type=float, default=0.01)
-    parser.add_argument('--w-log', type=float, default=0.1)
-    parser.add_argument('--split-method', type=str, default='random',
-                        choices=['random', 'stratified'])
-    parser.add_argument('--plasma-mode', type=str, default='all',
-                        choices=['H', 'L', 'all'])
     parser.add_argument('--hidden', type=int, default=64)
     parser.add_argument('--num-layers', type=int, default=2)
     parser.add_argument('--num-heads', type=int, default=4)
@@ -398,12 +398,11 @@ def main():
             train_transformer_model(
                 datatype=dt, data_dir=args.data, output_dir=str(output_dir),
                 epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
-                w_mono=args.w_mono, w_bdy=args.w_bdy, w_smooth=args.w_smooth, w_log=args.w_log,
+                w_mono=args.w_mono, w_bdy=args.w_bdy, w_smooth=args.w_smooth,
                 patience=50, device=device,
                 hidden=args.hidden, num_layers=args.num_layers,
                 num_heads=args.num_heads, ffn_dim=args.ffn_dim,
                 dropout=args.dropout, max_len=args.max_len,
-                split_method=args.split_method, plasma_mode=args.plasma_mode,
             )
         except FileNotFoundError as e:
             print(f"Skipping {dt}: {e}")

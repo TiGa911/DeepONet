@@ -1,6 +1,8 @@
 % ===========================================================================
 % DeepONet-Based Neural Network for Thomson Scattering Profile Fitting on EAST
-% Target: Plasma Science and Technology (PST) / Fusion Engineering and Design
+% Target: Plasma Science and Technology (PST) — 内容与 FED 版（manuscript_fed.tex）同步
+% （2026-10-08 全量同步：7 炮 33 时间点、验收区间、逐约束消融、确定性推理修复；
+%   仅保留 PST 格式元素：IOP 参考文献体例、PACS、作者脚注基金）
 % ===========================================================================
 
 \documentclass[a4paper,12pt]{article}
@@ -27,11 +29,11 @@
 \title{DeepONet-Based Neural Network for Thomson Scattering \\ Profile Fitting on EAST Tokamak}
 
 \author{%
-C.Y. Hu$^{1,2,3}$, Q. Zang$^{3,\ast}$\thanks{Project supported by [funding information to be added]. Corresponding author: Q. Zang (zangq@ipp.ac.cn).} \\[4pt]
-$^1$ Anhui University of Science and Technology, Huainan 232001, China \\
-$^2$ Institute of Energy, Hefei Comprehensive National Science Center \\
+C.Y. Hu$^{a,b,c}$, Q. Zang$^{c,\ast}$\thanks{Project supported by the National Natural Science Foundation of China under Grant No. 12135015, and the National MCF Energy R\&D Program under Grant No. 2025YFE03050001. Corresponding author: Q. Zang (zangq@ipp.ac.cn).} \\[4pt]
+$^a$ Anhui University of Science and Technology, Huainan 232001, China \\
+$^b$ Institute of Energy, Hefei Comprehensive National Science Center \\
 (Anhui Energy Laboratory), Hefei 230031, China \\
-$^3$ Institute of Plasma Physics, Chinese Academy of Sciences, \\
+$^c$ Institute of Plasma Physics, Chinese Academy of Sciences, \\
 Hefei 230031, China
 }
 
@@ -40,16 +42,20 @@ Hefei 230031, China
 \begin{document}
 \maketitle
 
+% Highlights are submitted separately in the Editorial Manager system (3--5 bullets, <=85 chars each);
+% they must NOT appear in the manuscript body (see paper/highlights.txt).
+
 \begin{abstract}
 \small
-Thomson Scattering (TS) diagnostics on the EAST tokamak provide discrete measurements of electron temperature (Te) and density (ne) at 20--30 spatial channels. Reconstructing continuous radial profiles from these scattered points is a prerequisite for transport analysis and equilibrium reconstruction. The widely used modified hyperbolic tangent (mtanh) method relies on diagnostic-specific processing branches and hand-tuned parameters, limiting scalability to the thousands of discharges produced annually. We propose a DeepONet-based neural network approach that replaces the seven-step mtanh pipeline with a single 14 ms forward pass. Models are trained on (scattered points, mtanh-fitted profile) pairs from 161 EAST discharges (2015--2024 campaigns). We compare five architectures. ProfileNet (SetEncoder), BiLSTM, Transformer, and CNN-DeepONet share one CoordDecoder (trunk net) and one physics-constrained loss; a pure CNN-1D without the branch-trunk structure serves as a control. On a test set of 4 unseen EAST shots (20 time points, 300 profiles) spanning L-mode to strong H-mode conditions (Te = 0.2--7.2 keV), the neural networks achieve mean absolute errors of Te = 0.36--0.53 keV, ne = 0.05--0.11 (in units of 10\textsuperscript{19} m\textsuperscript{-3}), and ion temperature Ti = 0.07--0.14 keV relative to the mtanh baseline.
+Thomson Scattering (TS) diagnostics on EAST measure electron temperature (Te) and density (ne) at 20--30 spatial channels; reconstructing continuous profiles is a prerequisite for transport and equilibrium analysis. The established modified hyperbolic tangent (mtanh) method relies on diagnostic-specific branches and hand-tuned parameters, limiting scalability to thousands of annual discharges. We propose a DeepONet-based neural network that replaces the seven-step mtanh pipeline with a single 14 ms forward pass, trained on (scattered points, mtanh-fitted profile) pairs from 161 EAST discharges. Five architectures are compared. ProfileNet, BiLSTM, Transformer, and CNN-DeepONet share one CoordDecoder trunk and one physics-constrained loss; a pure CNN-1D acts as a control. On 89 unseen test profiles (7 shots, 33 time points) spanning L-mode to strong H-mode (Te = 0.2--7.2 keV), the networks achieve mean absolute errors of Te = 0.34--0.49 keV, ne = 0.06--0.11 (10\textsuperscript{19} m\textsuperscript{-3}), and Ti = 0.07--0.15 keV relative to the mtanh baseline.
 
-Ablation experiments point to a key architectural distinction: with the physics constraints removed, the pure CNN-1D degrades by 30.9\%, but the DeepONet models improve slightly ($-$11.5\%). The reason is the branch--trunk dot product itself: every output is a linear combination of smooth basis functions, so smoothness comes from the architecture instead of penalty terms. A controlled CNN-DeepONet variant (the CNN encoder paired with the shared trunk) resolves the encoder/decoder confound: the trunk decoder improves Ti substantially (0.142 to 0.082 keV) but does nothing for Te or ne, so the regularization is diagnostic-specific. No single architecture is optimal for all diagnostics; the differences track how each diagnostic samples space, not model capacity. Where earlier studies tested one ML model at a time, this work compares five architectures under identical training and evaluation conditions. We therefore recommend a diagnostic-matched ensemble (CNN-Te + Transformer-ne + LSTM-Ti, total inference $<$50 ms).
+Ablation shows that removing the physics constraints improves ProfileNet ($-$10.9\%) and Transformer ($-$16.7\%) but degrades CNN-1D (+32.5\%) and LSTM (+18.8\%). The branch--trunk dot product confines outputs to smooth basis combinations---structural regularization for static encoders; the recurrent branch still needs explicit constraints. A per-profile Gaussian-process baseline is more accurate in-sample but $\sim$15$\times$ slower. A controlled CNN-DeepONet variant (CNN encoder plus shared trunk) resolves the confound: the trunk decoder improves Ti substantially (0.144 to 0.072 keV) but not Te or ne. No architecture is best for all diagnostics; we recommend a diagnostic-matched ensemble (CNN-Te + ProfileNet-ne + LSTM-Ti, total inference <50 ms).
 
-\textbf{Keywords}: EAST tokamak, Thomson scattering, profile fitting, DeepONet, neural network, physics-constrained learning
+\end{abstract}
+
+\noindent\textbf{Keywords}: EAST tokamak, Thomson scattering, profile fitting, DeepONet, neural network, physics-constrained learning
 
 \noindent\textbf{PACS:} 52.55.Fa, 52.70.Kz, 07.05.Mh
-\end{abstract}
 
 % ===========================================================================
 % 1. Introduction
@@ -62,7 +68,7 @@ The standard profile fitting method on EAST employs a modified hyperbolic tangen
 
 Machine learning has reached fusion diagnostics as well: Gaussian Process Regression for profile fitting~\cite{gpr_profiles,gpr_review}, Bayesian integrated data analysis~\cite{ida_east}, neural networks for TS temporal super-resolution~\cite{diag2diag}, and CNN-based density profile reconstruction~\cite{lan_cnn_east}. The Deep Operator Network (DeepONet)~\cite{deeponet} is a neural architecture specifically designed to learn mappings between function spaces, separating an operator $G: u \mapsto G(u)$ into a branch network encoding the input function and a trunk network encoding the output domain~\cite{physics_informed_deeponet,pinn_review}. The branch-trunk form has one property we rely on throughout: the output $\hat{y}(\rho) = \sum b_k \cdot t_k(\rho)$ is always a linear combination of smooth basis functions. Non-physical oscillations are excluded by construction, and we treat the architecture itself as \textit{structural regularization} for profile fitting.
 
-In this work, we propose a DeepONet-based neural network that replaces the seven-step mtanh pipeline with a single $\sim$14 ms forward pass. Five architectures are compared---four (ProfileNet (SetEncoder), BiLSTM, Transformer, and CNN-DeepONet) share a common CoordDecoder and physics-constrained loss, while a pure CNN-1D serves as a control group without the branch-trunk structure---enabling a controlled study of architectural inductive biases. Our contributions include: (1) first application of DeepONet to EAST TS profile fitting; (2) systematic five-architecture comparison under unified conditions; (3) a controlled CNN-DeepONet variant that resolves the encoder/decoder confound, showing the shared trunk decoder is beneficial for sparse diagnostics (Ti) but not dense ones (Te, ne); (4) ablation experiments showing the branch-trunk structure regularizes by itself (without physics constraints CNN-1D degrades 30.9\%, whereas the DeepONet architectures improve slightly); (5) discovery of a diagnostic-architecture matching pattern reflecting intrinsic differences in diagnostic spatial sampling; and (6) quantification of downstream LHW current drive impact ($\sim$24\% deviation from mtanh).
+In this work, we propose a DeepONet-based neural network that replaces the seven-step mtanh pipeline with a single $\sim$14 ms forward pass. Five architectures are compared---four (ProfileNet (SetEncoder), BiLSTM, Transformer, and CNN-DeepONet) share a common CoordDecoder and physics-constrained loss, while a pure CNN-1D serves as a control group without the branch-trunk structure---enabling a controlled study of architectural inductive biases. Our contributions include: (1) to the best of our knowledge, the first application of DeepONet to EAST TS profile fitting; (2) systematic five-architecture comparison under unified conditions; (3) a controlled CNN-DeepONet variant that resolves the encoder/decoder confound, showing the shared trunk decoder is beneficial for sparse diagnostics (Ti) but not dense ones (Te, ne); (4) ablation experiments---including a per-constraint localization of each physics term---showing that the branch-trunk structure regularizes static encoders by itself (without physics constraints ProfileNet and Transformer improve by 11--17\%, while CNN-1D and LSTM degrade by 19--33\%); (5) discovery of a diagnostic-architecture matching pattern reflecting intrinsic differences in diagnostic spatial sampling. In brief, the methodological novelty of this work lies in two intertwined ideas: treating the operator-learning structure itself as a built-in regularizer, and designing the comparison (shared trunk, controlled CNN-DeepONet variant, unified physics-constrained loss) so that this claim is testable rather than assumed.
 
 % ===========================================================================
 % 2. Method
@@ -79,37 +85,40 @@ The mtanh approach implements $\mathcal{F}$ through an explicit parametric pipel
 
 Training data were constructed from EAST discharges spanning 2015--2024 campaigns (161 shots, shot numbers 60150--149600). For each (shot, time) pair with available diagnostic data, the standard mtanh pipeline was executed to produce a 201-point fitted profile serving as the training label. The raw scattered diagnostic points---without IQR cleaning---serve as the neural network input. Invalid channels (non-finite readings or values below diagnostic-specific validity thresholds) are masked out when the scatter input is constructed; all encoders natively accept variable-length point sets, and CNN-1D additionally encodes the mask as a second input channel.
 
-\textbf{H-mode/L-mode classification}: The energy confinement factor $H_{98}$ was read from the EAST MDSplus \texttt{energy\_east} tree ($\backslash$H98\_MHD signal). Time points with $H_{98} \geq 0.7$ are classified as H-mode, $0 < H_{98} < 0.7$ as L-mode, and $H_{98} = 0$ as unknown (data unavailable).
+\textbf{H-mode/L-mode classification}: The energy confinement factor $H_{98}$ was read from the EAST MDSplus \texttt{energy\_east} tree ($\backslash$H98\_MHD signal). Time points with $H_{98} \geq 0.7$ are classified as H-mode, $0 < H_{98} < 0.7$ as L-mode, and $H_{98} = 0$ as unknown (data unavailable). The 0.7 threshold sits between typical L-mode confinement values and the nominal H-mode level ($H_{98}(y,2) \approx 1.0$); time points without a valid $H_{98}$ reading are excluded from mode-specific comparisons.
 
-\textbf{Stratified shot-based split}: To prevent data leakage, all time points from the same discharge are assigned to the same dataset partition (train/validation/test). The split ratio is 70/15/15, stratified by plasma mode where possible. The test set consists of 4 unseen 2024 shots (156005, 156010, 156100, 156400) covering L-mode to strong H-mode conditions ($T_e = 0.2$--$7.2$ keV). Key test set statistics are summarized in Table~\ref{tab:testset}.
+\textbf{Held-out test set}: To prevent data leakage, all test data are taken from 2024--2025 discharges outside the training shot range (60150--149600) and are not used in training or validation; the train/validation split is 70/15/15. The test set consists of 7 unseen shots (156005, 156010, 156100, 156400, 156900 from 2024; 158100, 158500 from 2025) covering L-mode to strong H-mode conditions ($T_e = 0.2$--$7.2$ keV). Several further discharges and time points were examined and excluded for documented reasons: 156200, whose EFIT equilibrium coverage ends at 10.6 s while its TS data span 32--101 s (unreliable $\rho$ mapping); the last two time points of 156900 (discharge ramp-down, 7.5--8.5 s), whose mtanh reference profiles become non-physical; and three time points of 158500 (4.0--7.0 s), where the mtanh reference diverges (a spline blow-up to 10.3 keV, a negative core from a 15 keV sentinel channel, and a collapsed TXCS $\rho$ mapping). Key test set statistics are summarized in Table~\ref{tab:testset}.
 
 \begin{table}[htbp]
 \centering\footnotesize
-\caption{Test set characteristics. All 4 shots are from the 2024 EAST campaign and are excluded from the training set.}
+\caption{Test set characteristics. All 7 shots (2024 and 2025 EAST campaigns) are excluded from the training set. The $T_e$ range is the range of mtanh-fitted core $T_e$ across the shot's time points.}
 \label{tab:testset}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{ccccccc}
+\begin{tabular}{cccccccc}
 \toprule
-\textbf{Shot} & \textbf{Time Points} & \textbf{$T_e$ Range (keV)} & \textbf{Mode (H/L/unk)} & \textbf{$H_{98}$ Range} & \textbf{TS} & \textbf{Refl+TXCS} \\
+\textbf{Shot} & \textbf{Time Points} & \textbf{$T_e$ Range (keV)} & \textbf{Mode (H/L/unk)} & \textbf{$H_{98}$ Range} & \textbf{TS} & \textbf{Refl} & \textbf{TXCS} \\
 \midrule
-156005 & 2 & 0.6--2.4 & 1H / 1L & 0.69--0.96 & \checkmark & \checkmark \\
-156010 & 6 & 0.2--2.3 & 6 unknown & 0.0$^*$ & \checkmark & \checkmark \\
-156100 & 6 & 1.2--3.3 & 1H / 5L & 0.56--1.10 & \checkmark & \checkmark \\
-156400 & 6 & 3.8--7.2 & 6H & 0.85--1.15 & \checkmark & \checkmark \\
+156005 & 2 & 2.3--2.4 & 1H / 1L & 0.69--0.96 & \checkmark & \checkmark & \checkmark \\
+156010 & 6 & 0.2--2.0 & 6 unknown & 0.0$^*$ & \checkmark & \checkmark & \checkmark \\
+156100 & 6 & 1.2--3.3 & 1H / 5L & 0.56--1.10 & \checkmark & \checkmark & \checkmark \\
+156400 & 6 & 3.8--7.2 & 6H & 0.85--1.15 & \checkmark & \checkmark & \checkmark \\
+156900 & 4 & 0.2--1.1 & 4L & 0.70$^{\dagger}$ & \checkmark & \checkmark & -- \\
+158100 & 6 & 2.2--2.5 & 6H & 0.73--0.78$^{\ddagger}$ & \checkmark & \checkmark$^{\S}$ & \checkmark$^{\S}$ \\
+158500 & 3 & 4.0--5.1 & 3 unknown & 0.0$^{\ddagger}$ & \checkmark & \checkmark$^{\S}$ & \checkmark$^{\S}$ \\
 \midrule
-Total & 20 & 0.2--7.2 & 8H / 6L / 6unk & --- & 20 & 20 \\
+Total & 33 & 0.2--7.2 & 14H / 10L / 9unk & --- & 33 & 29 & 27 \\
 \bottomrule
 \end{tabular}%
 }
 \vspace{4pt}
-\footnotesize{$^*$ Shot 156010: $H_{98}$ data unavailable from MDSplus (returns 0.0). Plasma mode is marked as ``unknown.''}
+\footnotesize{$^*$ Shot 156010: $H_{98}$ data unavailable from MDSplus (returns 0.0). Plasma mode is marked as ``unknown.'' $^{\dagger}$ Shot 156900: the $H_{98}$ signal ends at 2.53 s; the last available value (0.698) is used for all time points, giving L-mode classification. TXCS ($T_i$) data are not available for this shot. $^{\ddagger}$ Shots 158100/158500 (2025 campaign): 158100 has valid $H_{98}$ readings near the H/L threshold (0.73--0.78); the \texttt{energy\_east} tree is not available for 158500, so its mode is ``unknown.'' $^{\S}$ Refl/TXCS data are available at most---but not all---time points of these shots; per-diagnostic sample sizes are given in Table~\ref{tab:metrics}.}
 \end{table}
 
 \subsection{Model Architecture}
 
 Four of the five architectures share a common DeepONet-style decoder and differ only in the encoder design (Figure~\ref{fig:architecture}); the fifth, CNN-1D, uses a pure convolutional decoder as a control. The shared \textbf{CoordDecoder} (trunk net) is an MLP(1$\to$128$\to$128, SiLU) that maps the output coordinate $\rho$ to a set of basis functions $\mathbf{b}(\rho) \in \mathbb{R}^{128}$. The final output is:
 \begin{equation}
-\hat{y}(\rho) = \text{Softplus}\left(\mathbf{z} \cdot \mathbf{b}(\rho)\right) = \text{Softplus}\left(\sum_{k=1}^{128} z_k \cdot b_k(\rho)\right)
+\hat{y}(\rho) = \operatorname{Softplus}\left(\mathbf{z} \cdot \mathbf{b}(\rho)\right) = \operatorname{Softplus}\left(\sum_{k=1}^{128} z_k \cdot b_k(\rho)\right)
 \label{eq:dotproduct}
 \end{equation}
 where $\mathbf{z} \in \mathbb{R}^{128}$ is the latent vector produced by the encoder. The Softplus activation ($\ln(1 + e^x)$) ensures positivity of the predicted physical quantities.
@@ -124,9 +133,11 @@ where $\mathbf{z} \in \mathbb{R}^{128}$ is the latent vector produced by the enc
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{paper_results/figures/fig2_hmode_overlay.png}
-\caption{Typical H-mode profile fitting results: six methods (mtanh baseline + five NN architectures) compared on three representative H-mode time points across Te, ne, and Ti diagnostics.}
+\caption{Typical H-mode profile fitting results: six methods (mtanh baseline + five NN architectures) compared on three representative H-mode time points across Te, ne, and Ti diagnostics. The gray shaded band is the data-driven acceptance band defined in Section~\ref{sec:results}. The displayed points are the test-set H-mode time points closest to the H-mode median $H_{98}$ (0.78--0.96 here), one per shot, after the automated quality screening of Section~\ref{sec:results}.}
 \label{fig:hmode}
 \end{figure}
+
+In Figure~\ref{fig:hmode}, a good fit can be read off directly: the profile should pass through the core diagnostic channels, track the steep pedestal gradient at $\rho = 0.85$--$1.0$ (where H-mode physics information is concentrated), stay smooth, positive, and monotone, and remain inside the gray acceptance band. These reading criteria are quantified by the MAE of Table~\ref{tab:metrics} and the in-band fractions of Table~\ref{tab:band}.
 
 \subsubsection{Encoder Architectures}
 
@@ -156,7 +167,7 @@ The training objective combines a region-weighted MSE with physics-inspired auxi
 \begin{itemize}
     \item $\mathcal{L}_{\text{MSE}}$: Region-weighted MSE (core $\rho < 0.85$: 3$\times$, pedestal $\rho \geq 0.85$: 25$\times$), prioritizing accurate pedestal reconstruction.
     \item $\mathcal{L}_{\log}$ ($w_{\log}=0.1$): Log-space MSE, penalizing relative errors in low-value edge regions where absolute errors are naturally small but physically significant.
-    \item $\mathcal{L}_{\text{mono}}$ ($\lambda_1=0.05$): $\text{ReLU}(d\hat{y}/d\rho)$, penalizing only positive derivatives (non-monotonic segments). Does not enforce global monotonicity; only suppresses local non-physical increases.
+    \item $\mathcal{L}_{\text{mono}}$ ($\lambda_1=0.05$): $\operatorname{ReLU}(+d\hat{y}/d\rho)$, penalizing only positive derivatives, i.e., local non-monotonic increases in a profile that should decrease monotonically with $\rho$. Does not enforce global monotonicity; only suppresses local non-physical increases.
     \item $\mathcal{L}_{\text{bdy}}$ ($\lambda_2=0.05$): Minimizes $|d\hat{y}/d\rho|$ for $\rho < 0.05$, enforcing the magnetic axis symmetry condition $dT/d\rho|_{\rho=0} = 0$.
     \item $\mathcal{L}_{\text{smooth}}$ ($\lambda_3=0.01$): Penalizes large second derivatives $|d^2\hat{y}/d\rho^2|$, suppressing high-frequency oscillations.
 \end{itemize}
@@ -165,20 +176,21 @@ The penalty weights ($\lambda_1$, $\lambda_2$, $\lambda_3$, $w_{\log}$) were set
 
 \subsection{Training Details}
 
-All models are trained with AdamW optimizer (learning rate $10^{-3}$, weight decay $10^{-5}$), cosine annealing learning rate schedule, batch size 64, and a maximum of 500 epochs with early stopping (patience = 100). Post-inference, a PCHIP (Piecewise Cubic Hermite Interpolating Polynomial) shape-preserving interpolation is applied to enforce strict monotonic decrease and floor-value edge protection. All reported metrics are evaluated on the profiles after this post-processing step. Inference times are measured on CPU (10 warm-up runs followed by 200 timed passes through the full inference function, model loading excluded).
+All models are trained with AdamW optimizer (learning rate $10^{-3}$, weight decay $10^{-5}$), cosine annealing learning rate schedule, batch size 64, and a maximum of 500 epochs with early stopping (patience = 100). Post-inference, a PCHIP (Piecewise Cubic Hermite Interpolating Polynomial) shape-preserving interpolation is applied to enforce strict monotonic decrease and floor-value edge protection. All reported metrics are evaluated on the profiles after this post-processing step; we verified on the Te test points that the PCHIP step changes both the fit-to-scatter and the vs-mtanh MAE by less than 0.001 keV, i.e., it does not materially affect the reported numbers. Inference times are measured on CPU (10 warm-up runs followed by 200 timed passes through the full inference function, model loading excluded); the end-to-end speed comparison against the mtanh pipeline is reported in Section~\ref{sec:results}.
 
 % ===========================================================================
 % 3. Results
 % ===========================================================================
 \section{Results}
+\label{sec:results}
 
 \subsection{Fitting Accuracy: Five Architectures vs. mtanh}
 
-Table~\ref{tab:metrics} presents the overall fitting accuracy of the five neural network architectures relative to the mtanh baseline across all 20 test time points (300 total profiles). The mean absolute error (MAE) is the primary metric. Because absolute errors are not directly comparable across plasma modes (the H-mode test shots reach $T_e$ up to 7.2 keV), mean relative errors (MeanRel\%) are reported by mode in the Appendix (Table~\ref{tab:meanrel}); RMSE and MaxAE, which exhibit the same architecture rankings as MAE, are available in the supplementary material (\texttt{paper\_results/all\_metrics.csv}).
+Table~\ref{tab:metrics} presents the overall fitting accuracy of the five neural network architectures relative to the mtanh baseline across all 33 test time points (89 unique profiles; 445 NN profile predictions). The mean absolute error (MAE) is the primary metric. Because absolute errors are not directly comparable across plasma modes (the H-mode test shots reach $T_e$ up to 7.2 keV), mean relative errors (MeanRel\%) are reported by mode in the Appendix (Table~\ref{tab:meanrel}); RMSE and MaxAE, which exhibit the same architecture rankings as MAE, are available in the supplementary material (\texttt{paper\_results/all\_metrics.csv}).
 
 \begin{table}[htbp]
 \centering\footnotesize
-\caption{Fitting accuracy (MAE $\pm$ std) of NN methods relative to mtanh baseline, by diagnostic and plasma mode. Best value in each row is \textbf{bold}. H-mode: 8 time points; L-mode: 6 time points; All: 20 time points (including 6 unknown-mode).}
+\caption{Fitting accuracy (MAE $\pm$ std) of NN methods relative to mtanh baseline, by diagnostic and plasma mode. Lowest mean in each row is \textbf{bold}; bold does not imply statistical significance against adjacent values (see the paired Wilcoxon tests in Section~\ref{sec:results}). H-mode: 14 time points; L-mode: 10 time points; All: 33 time points (including 9 unknown-mode). The $\pm$ values are the standard deviation of MAE across the time points within each group (not measurement uncertainty). Per-diagnostic sample sizes (All): $T_e$ 33, $n_e$ 29, $T_i$ 27, reflecting incomplete Refl/TXCS coverage in shots 156900, 158100, and 158500.}
 \label{tab:metrics}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{c c | c c c c c}
@@ -186,19 +198,19 @@ Table~\ref{tab:metrics} presents the overall fitting accuracy of the five neural
 \textbf{Diag.} & \textbf{Mode} & \textbf{ProfileNet} & \textbf{LSTM} & \textbf{CNN-1D} & \textbf{CNN-DeepONet} & \textbf{Transformer} \\
 \midrule
 \multirow{3}{*}{Te (keV)}
-    & All   & 0.531$\pm$0.280 & \textbf{0.358$\pm$0.196} & 0.375$\pm$0.302 & 0.436$\pm$0.334 & 0.374$\pm$0.332 \\
-    & H     & 0.639$\pm$0.230 & 0.525$\pm$0.151 & 0.661$\pm$0.278 & 0.755$\pm$0.287 & 0.694$\pm$0.299 \\
-    & L     & 0.216$\pm$0.081 & 0.181$\pm$0.065 & 0.224$\pm$0.100 & 0.211$\pm$0.040 & \textbf{0.157$\pm$0.037} \\
+    & All   & 0.493$\pm$0.261 & 0.362$\pm$0.211 & \textbf{0.337$\pm$0.261} & 0.391$\pm$0.291 & 0.378$\pm$0.323 \\
+    & H     & 0.519$\pm$0.249 & \textbf{0.423$\pm$0.184} & 0.492$\pm$0.299 & 0.562$\pm$0.328 & 0.514$\pm$0.302 \\
+    & L     & 0.298$\pm$0.206 & 0.224$\pm$0.125 & 0.205$\pm$0.080 & 0.199$\pm$0.063 & \textbf{0.165$\pm$0.087} \\
 \midrule
 \multirow{3}{*}{$n_e$ (10$^{19}$)}
-    & All   & \textbf{0.054$\pm$0.018} & 0.056$\pm$0.016 & 0.067$\pm$0.024 & 0.074$\pm$0.021 & 0.108$\pm$0.024 \\
-    & H     & \textbf{0.058$\pm$0.013} & 0.065$\pm$0.020 & 0.067$\pm$0.030 & 0.073$\pm$0.020 & 0.120$\pm$0.020 \\
-    & L     & \textbf{0.051$\pm$0.020} & 0.052$\pm$0.008 & 0.069$\pm$0.020 & 0.066$\pm$0.021 & 0.095$\pm$0.022 \\
+    & All   & \textbf{0.056$\pm$0.017} & 0.058$\pm$0.018 & 0.063$\pm$0.023 & 0.075$\pm$0.020 & 0.110$\pm$0.024 \\
+    & H     & \textbf{0.056$\pm$0.012} & 0.058$\pm$0.020 & 0.060$\pm$0.028 & 0.071$\pm$0.018 & 0.112$\pm$0.022 \\
+    & L     & \textbf{0.058$\pm$0.022} & 0.063$\pm$0.017 & 0.068$\pm$0.021 & 0.071$\pm$0.019 & 0.110$\pm$0.031 \\
 \midrule
 \multirow{3}{*}{$T_i$ (keV)}
-    & All   & 0.091$\pm$0.047 & \textbf{0.074$\pm$0.038} & 0.142$\pm$0.046 & 0.082$\pm$0.043 & 0.089$\pm$0.060 \\
-    & H     & 0.097$\pm$0.034 & \textbf{0.075$\pm$0.026} & 0.110$\pm$0.034 & 0.076$\pm$0.018 & 0.090$\pm$0.042 \\
-    & L     & 0.073$\pm$0.054 & 0.046$\pm$0.025 & 0.150$\pm$0.041 & 0.054$\pm$0.016 & \textbf{0.041$\pm$0.017} \\
+    & All   & 0.084$\pm$0.050 & \textbf{0.070$\pm$0.038} & 0.145$\pm$0.045 & 0.072$\pm$0.042 & 0.086$\pm$0.055 \\
+    & H     & 0.090$\pm$0.048 & 0.074$\pm$0.030 & 0.126$\pm$0.048 & \textbf{0.066$\pm$0.021} & 0.085$\pm$0.040 \\
+    & L     & 0.073$\pm$0.066 & \textbf{0.046$\pm$0.028} & 0.153$\pm$0.034 & 0.054$\pm$0.018 & 0.050$\pm$0.024 \\
 \bottomrule
 \end{tabular}%
 }
@@ -207,33 +219,63 @@ Table~\ref{tab:metrics} presents the overall fitting accuracy of the five neural
 Key observations from Table~\ref{tab:metrics}:
 
 \begin{enumerate}
-    \item \textbf{No single architecture dominates all diagnostics.} LSTM gives the best overall Te MAE (0.358 keV) and Ti MAE (0.074 keV); ProfileNet wins for $n_e$ (0.054). And none is uniformly worst: the pure CNN-1D is weakest on $T_i$ (0.142 keV) yet competitive on Te, while Transformer leads in L-mode Te and trails on $n_e$ (0.108). Encoder choice, it seems, interacts with how each diagnostic samples space; no single architecture is better everywhere.
+    \item \textbf{No single architecture dominates all diagnostics.} CNN-1D (0.337 keV), LSTM (0.362 keV), and Transformer (0.372 keV) are statistically indistinguishable for Te; ProfileNet is significantly worse than all three ($p<0.01$). For $T_i$, LSTM's lead (0.070 keV) is not significant against the other DeepONet variants ($p>0.2$), but all four significantly beat CNN-1D (0.144 keV, $p<0.001$). For $n_e$, ProfileNet (0.056) and LSTM (0.058) are indistinguishable ($p=0.16$), and both significantly beat CNN-DeepONet (0.075, $p<0.01$) and Transformer (0.110, $p<0.001$); CNN-1D (0.063) is not significantly different from ProfileNet. Encoder choice, it seems, interacts with how each diagnostic samples space; no single architecture is better everywhere.
 
-    \item \textbf{L-mode accuracy exceeds H-mode for Te.} The H-mode Te MAE (0.525--0.694 keV) is consistently higher than L-mode Te MAE (0.157--0.224 keV). This is because the H-mode test set includes shot 156400 with very high core temperatures (up to 7.2 keV) and steep pedestals, amplifying absolute differences between mtanh and NN fits. The relative errors are comparable across modes (Table~\ref{tab:meanrel}).
+    \item \textbf{L-mode accuracy exceeds H-mode for Te.} The H-mode Te MAE (0.423--0.562 keV) is consistently higher than L-mode Te MAE (0.185--0.298 keV). This is because the H-mode test set includes shot 156400 with very high core temperatures (up to 7.2 keV) and steep pedestals, amplifying absolute differences between mtanh and NN fits. In relative terms, H-mode errors (37--51\%) are lower than L-mode errors (43--97\%); the L-mode MeanRel\% is inflated by the newly added low-$T_e$ points of shot 156900 (core $T_e$ 0.2--1.1 keV), whose edge values approach zero and make relative error ill-conditioned (Table~\ref{tab:meanrel}).
 
-    \item \textbf{The CNN-DeepONet control resolves the encoder/decoder confound.} Keeping the CNN encoder fixed and swapping CNN-1D's pure convolutional decoder for the shared CoordDecoder trunk improves $T_i$ sharply (0.142 to 0.082 keV, $-$42\%), while Te (0.375 to 0.436 keV) and $n_e$ (0.067 to 0.074) get slightly worse. The trunk helps exactly where the data are sparse---the 5--15 irregular TXCS channels---and does nothing where they are dense. For TS and Refl the data already fix the local shape, so a convolutional decoder is enough. CNN-1D's $T_i$ weakness is thus a property of its decoder, not its encoder.
+    \item \textbf{The CNN-DeepONet control resolves the encoder/decoder confound.} Keeping the CNN encoder fixed and swapping CNN-1D's pure convolutional decoder for the shared CoordDecoder trunk improves $T_i$ sharply (0.144 to 0.072 keV, $-$50\%), while Te (0.337 to 0.391 keV) and $n_e$ (0.063 to 0.075) get slightly worse. The trunk helps exactly where the data are sparse---the 5--15 irregular TXCS channels---and does nothing where they are dense. For TS and Refl the data already fix the local shape, so a convolutional decoder is enough. CNN-1D's $T_i$ weakness is thus a property of its decoder, not its encoder.
 
-    \item \textbf{Transformer excels in L-mode.} Transformer achieves the lowest L-mode MAE for both Te (0.157 keV) and $T_i$ (0.041 keV), suggesting that its global self-attention mechanism is particularly well-suited to the smoother, less pedestal-dominated profiles characteristic of L-mode plasmas.
+    \item \textbf{Transformer excels in L-mode.} Transformer achieves the lowest L-mode Te MAE (0.165 keV) and is statistically tied with LSTM for $T_i$ (0.050 vs. 0.046 keV, Wilcoxon $p=0.84$); its Te lead is not statistically significant at this sample size (Wilcoxon $p>0.05$), so the finding is suggestive of a genuine advantage of global self-attention on the smoother, less pedestal-dominated L-mode profiles, rather than established.
 \end{enumerate}
+
+To separate real differences from sampling noise, we ran paired Wilcoxon signed-rank tests on the per-time-point MAE within each (diagnostic, mode) group. The statistically robust findings are: (i) ProfileNet is significantly worse than LSTM, CNN-1D, and Transformer for Te ($p<0.01$); (ii) CNN-1D is significantly worse than the DeepONet variants for $T_i$ ($p<0.001$); (iii) Transformer is significantly worse than all other architectures for $n_e$ ($p<0.001$); and (iv) the CNN-DeepONet trunk swap improves $T_i$ significantly ($p<0.001$). All remaining rank differences are within sampling noise at the current test-set size.
 
 Figure~\ref{fig:boxplot} shows the MAE distribution across all test time points as box plots, confirming the trends observed in Table~\ref{tab:metrics}.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.85\textwidth]{paper_results/figures/fig6_mae_boxplot.png}
-\caption{MAE distribution across all 20 test time points (vs. mtanh baseline). Each box shows median, quartiles, and outliers; means are annotated.}
+\caption{MAE distribution across all 33 test time points (vs. mtanh baseline). Each box shows median, quartiles, and outliers; means are annotated.}
 \label{fig:boxplot}
 \end{figure}
 
+\subsection{Comparison with Gaussian Process Regression}
+
+Gaussian process regression (GPR) is the established ML alternative for profile fitting, and a natural question is how the DeepONet compares. We fit a per-profile GPR (RBF kernel with white noise, hyperparameters optimized per profile by marginal likelihood) directly to the raw diagnostic scatter of each test point, and compare the fit-to-scatter MAE with the mtanh fit and with the stored ProfileNet profile (Table~\ref{tab:gpr}). This comparison is deliberately asymmetric: GPR is a non-parametric model evaluated in-sample on the very points it fits, whereas the NN is trained offline to reproduce the mtanh reference and never sees the test scatter; the fit-to-scatter objective is therefore GPR's home ground.
+
+\begin{table}[htbp]
+\centering\footnotesize
+\caption{Fit-to-scatter MAE (mean $\pm$ std, interpolated to the raw diagnostic channel positions): per-profile RBF Gaussian process regression vs. the mtanh fit and the stored ProfileNet profile. GPR hyperparameters are optimized per profile; fit times are per profile on CPU.}
+\label{tab:gpr}
+\begin{tabular}{l c c c c}
+\toprule
+\textbf{Diagnostic} & \textbf{GPR} & \textbf{mtanh} & \textbf{ProfileNet} & \textbf{GPR fit time} \\
+\midrule
+Te (keV)       & 0.562$\pm$0.542 & 0.698$\pm$0.383 & 0.893$\pm$0.445 & $\sim$260 ms \\
+$n_e$ (10$^{19}$) & 0.286$\pm$0.101 & 0.333$\pm$0.114 & 0.437$\pm$0.088 & $\sim$240 ms \\
+$T_i$ (keV)    & 0.099$\pm$0.043 & 0.143$\pm$0.078 & 0.160$\pm$0.077 & $\sim$340 ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+GPR achieves the lowest fit-to-scatter MAE on all three diagnostics: 20\% better than mtanh for Te ($p=0.009$), 14\% better for $n_e$ ($p<0.001$), and 31\% better for $T_i$ ($p<0.001$). The DeepONet's fit-to-scatter error is the largest because that is not its training objective---it reproduces the mtanh reference---and because the raw scatter contains invalid high-value channels (e.g., 15 keV sentinel readings) that the mtanh pipeline and the NN mask or reject but that dominate this metric. The trade-off is clear: GPR costs 240--340 ms per profile ($\sim$15$\times$ the NN's 14--19 ms) with $O(N^3)$ scaling, requires per-profile hyperparameter optimization, and transfers nothing across discharges; the DeepONet provides uniform 14--19 ms inference, learns a dataset-level prior over 161 discharges, and generalizes without re-optimization. For bulk EAST processing---thousands of time points per campaign---the NN's latency and determinism dominate the comparison; for single high-value profiles where per-shot accuracy against the raw channels matters and a specialist can inspect the fit, GPR remains the better tool.
+
 \subsection{H-mode vs. L-mode: Cross-Regime Robustness}
 
-Figure~\ref{fig:hl} compares H-mode and L-mode MAE for each diagnostic-method combination. The neural networks demonstrate consistent performance across plasma regimes, with LSTM and Transformer showing the most balanced H/L accuracy profiles.
+Figure~\ref{fig:hl} compares H-mode and L-mode MAE for each diagnostic-method combination. The neural networks demonstrate consistent performance across plasma regimes, with LSTM and Transformer showing the most balanced H/L accuracy profiles. The L-mode group includes the low-$T_e$ discharge 156900 (core $T_e$ down to 0.2 keV), which extends the comparison to colder L-mode conditions, and the H-mode group gains the 2025 discharge 158100 (six points at $H_{98} = 0.73$--$0.78$, near the H/L threshold), whose mild pedestals are fitted more accurately than the strong-pedestal cases of 156400. Figure~\ref{fig:lmode} shows the corresponding L-mode profile overlay: the models track the smoother L-mode profiles closely, consistent with the lower L-mode MAE in Table~\ref{tab:metrics}.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.90\textwidth]{paper_results/figures/fig7_hl_comparison.png}
 \caption{H-mode vs. L-mode MAE comparison for each diagnostic and architecture. H-mode profiles (solid bars) correspond to $H_{98} \geq 0.7$; L-mode (hatched bars) to $0 < H_{98} < 0.7$.}
 \label{fig:hl}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{paper_results/figures/fig3_lmode_overlay.png}
+\caption{Typical L-mode profile fitting results: six methods compared on three representative L-mode time points across Te, ne, and Ti diagnostics, with the same acceptance-band shading as Figure~\ref{fig:hmode}.}
+\label{fig:lmode}
 \end{figure}
 
 \subsection{Pedestal Region Fitting}
@@ -264,38 +306,72 @@ To decouple the contributions of the physics-constrained loss function from the 
 
 \begin{table}[htbp]
 \centering\small
-\caption{Ablation experiment results (Te diagnostic): MAE with and without physics constraints. $\Delta =$ (Physics-off MAE $-$ Physics-on MAE) / Physics-on MAE. Positive $\Delta$ indicates degradation when constraints are removed.}
+\caption{Ablation experiment results (Te diagnostic): MAE with and without physics constraints. $\Delta =$ (mean Physics-off MAE $-$ mean Physics-on MAE) / mean Physics-on MAE, averaged over the 33 test time points. Positive $\Delta$ indicates degradation when constraints are removed.}
 \label{tab:ablation}
 \begin{tabular}{lccc}
 \toprule
 \textbf{Architecture} & \textbf{Physics-on MAE} & \textbf{Physics-off MAE} & \textbf{$\Delta$} \\
 \midrule
-ProfileNet (DeepONet)   & 0.531 & 0.460 & \textbf{$-$11.5\%} (improved) \\
-LSTM (DeepONet)         & 0.358 & 0.482 & +12.7\% \\
-CNN-1D (no DeepONet)    & 0.375 & 0.466 & \textbf{+30.9\%} (degraded) \\
-Transformer (DeepONet)  & 0.374 & 0.318 & \textbf{$-$11.4\%} (improved) \\
+ProfileNet (DeepONet)   & 0.493 & 0.439 & \textbf{$-$10.9\%} (improved) \\
+LSTM (DeepONet)         & 0.362 & 0.430 & \textbf{+18.8\%} (degraded) \\
+CNN-1D (no DeepONet)    & 0.337 & 0.446 & \textbf{+32.5\%} (degraded) \\
+Transformer (DeepONet)  & 0.378 & 0.314 & \textbf{$-$16.7\%} (improved) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The ablation results split into two clear groups. The DeepONet architectures (ProfileNet, Transformer) improve when the physics constraints are removed ($\Delta = -11.5\%$ and $-11.4\%$); CNN-1D, which has no branch-trunk structure, degrades badly ($\Delta = +30.9\%$). The DeepONet operator approximation theorem~\cite{deeponet} explains why: each basis function $t_k(\rho)$ is a smooth MLP output, so every linear combination $\sum b_k \cdot t_k(\rho)$ is $C^\infty$ smooth and high-frequency oscillations are excluded without any penalty. The branch network can only select coefficients $b_k$, not independently modify each $\hat{y}(\rho_i)$---a functional regularization absent in CNN-1D. The marginal improvement of DeepONet architectures without physics constraints further suggests that $\mathcal{L}_{\text{mono}} + \mathcal{L}_{\text{bdy}} + \mathcal{L}_{\text{smooth}}$ may slightly over-regularize these models. LSTM's mild degradation ($+12.7\%$) represents an intermediate case where its sequential encoder introduces sufficient flexibility to benefit from explicit constraints.
+The ablation results split into three behaviors. The pooling- and attention-based DeepONets improve when the physics constraints are removed (ProfileNet $-10.9\%$, Transformer $-16.7\%$); CNN-1D, which has no branch-trunk structure, degrades the most ($+32.5\%$); and LSTM degrades by $+18.8\%$ despite sharing the same trunk. The mechanical interpretation is deferred to Section 4.1; the immediate practical conclusion is that the branch-trunk structure alone is sufficient regularization for the static encoders (for which the physics terms slightly over-regularize), while the recurrent encoder still depends on the explicit constraints.
 
-\subsection{LHW Current Drive: Downstream Impact}
+To localize the contribution of each physics term, we retrained the four architectures with exactly one constraint removed at a time (Table~\ref{tab:ablation_pc}, Figure~\ref{fig:ablation_pc}). The per-constraint results sharpen the three-way picture: (i) LSTM depends on the \textit{combination} of monotonicity, smoothness, and log terms---removing any one of them degrades it by 34--44\%---while the axis-symmetry term is irrelevant ($-1\%$); (ii) CNN-1D depends almost exclusively on the smoothness penalty ($+32\%$), and removing the other three individually leaves it unchanged or slightly improved---without a trunk, the smoothness term is its only guard against oscillations; (iii) for the static encoders the response is mixed term by term: ProfileNet is hurt by every single removal ($+5$--$17\%$) yet improves when all are removed ($-11\%$), while Transformer is hurt only by removing the monotonicity and log terms ($+6\%$ each) and improves when the smoothness or all constraints are removed ($-7\%$/$-17\%$)---a non-additive interaction consistent with the constraints jointly over-regularizing these architectures. The axis-symmetry term $\mathcal{L}_{\text{bdy}}$ is the least important for all four architectures ($-9\%$ to $+5\%$), consistent with the data and the other penalties already enforcing $dT/d\rho|_{\rho=0}\approx 0$.
 
-To quantify how differences in fitted profiles propagate to downstream physics calculations, we compared Lower Hybrid Current Drive (LHCD) power deposition and driven current profiles~\cite{lhcd_east,lh_pdi_east} computed from the six fitting methods. Figure~\ref{fig:lhw} shows LHW results for shot 156400 (H-mode, $P_{\text{LHW}} = 969$--$1936$ kW).
+\begin{table}[htbp]
+\centering\footnotesize
+\caption{Per-constraint ablation (Te): change in mean MAE when a single physics term is removed, relative to the physics-on model (first row: physics-on MAE in keV). Same 33 test time points as Table~\ref{tab:ablation}.}
+\label{tab:ablation_pc}
+\begin{tabular}{l c c c c}
+\toprule
+\textbf{Term removed} & \textbf{ProfileNet} & \textbf{LSTM} & \textbf{CNN-1D} & \textbf{Transformer} \\
+\midrule
+Physics-on MAE (keV) & 0.493 & 0.362 & 0.337 & 0.378 \\
+\midrule
+$\mathcal{L}_{\text{mono}}$ only   & $+17\%$ & \textbf{$+44\%$} & $-1\%$ & $+6\%$ \\
+$\mathcal{L}_{\text{bdy}}$ only    & $+5\%$ & $-1\%$ & $-9\%$ & $-3\%$ \\
+$\mathcal{L}_{\text{smooth}}$ only & $+12\%$ & \textbf{$+44\%$} & \textbf{$+32\%$} & $-7\%$ \\
+$\mathcal{L}_{\log}$ only          & $+10\%$ & $+34\%$ & $-15\%$ & $+6\%$ \\
+All constraints                    & $-11\%$ & $+19\%$ & $+32\%$ & $-17\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{paper_results/figures/fig9_lhw_comparison.png}
-\caption{LHW current drive comparison: six fitting methods applied to shot 156400. The four panels show current density profile, power density profile, cumulative driven current, and cumulative power deposition. Differences in fitted Te/ne profiles propagate through the LHW model, yielding $\Delta I_{\text{LH}} \approx 24\%$ relative to mtanh.}
-\label{fig:lhw}
+\includegraphics[width=0.85\textwidth]{paper_results/figures/fig_ablation_per_constraint.png}
+\caption{Per-constraint ablation (Te): MAE change relative to the physics-on model when one physics term is removed at a time, grouped by architecture. Bars below zero indicate improvement.}
+\label{fig:ablation_pc}
 \end{figure}
 
-The total driven current $I_{\text{LH}}$ computed from NN-fitted profiles differs from the mtanh baseline by roughly $\Delta I_{\text{LH}} / I_{\text{LH, mtanh}} \approx 24\%$. The LHW deposition model is nonlinear in the shapes of $T_e$ and $n_e$: small profile differences get amplified by the Landau damping resonance condition and the quasi-linear diffusion coefficients.
+\subsection{Engineering Value: Speed, Automation, and Acceptance}
 
-\textbf{Important caveat}: This comparison quantifies the \textit{propagation} of profile differences through the LHW model, not which method produces ``correct'' LHW predictions. Direct validation against experimental current drive measurements is not available. Additionally, ONETWO transport calculations (which would provide a more complete physics validation) could not be completed due to a ZFIT atomic physics temperature-range limitation in the ONETWO Fortran code (exit code 91), which is a known EAST-specific incompatibility with the CFETR-designed template.
+\textbf{Inference speed and determinism.} All five architectures achieve inference under $\sim$20 ms on a single CPU core (ProfileNet $\sim$15 ms, LSTM $\sim$14 ms, CNN-1D $\sim$16 ms, CNN-DeepONet $\sim$16 ms, Transformer $\sim$19 ms), making them suitable for both offline batch processing and potential real-time applications. For reference, we timed the mtanh pipeline end-to-end on the same CPU over the 33 test points: 14--119 ms per Te profile (median 93 ms), 42--2320 ms for $n_e$ (median 76 ms; slow least-squares convergence produces the long tail), and 2.4--4.0 ms for $T_i$ (its parametric fit is lighter than the NN). The NN is thus $\sim$5$\times$ faster than the median mtanh Te fit, up to $\sim$100$\times$ faster in slow-convergence $n_e$ cases, and slower than mtanh for $T_i$ in raw latency. The practical gain is therefore not raw speed but uniformity: one deterministic 14--19 ms pass with no per-case optimizer failure modes and no manual inspection. The diagnostic-optimal ensemble (CNN-based $T_e$ + ProfileNet-based $n_e$ + LSTM-based $T_i$, 66K+67K+76K parameters) runs under 50 ms combined.
 
-All five architectures achieve inference under $\sim$20 ms on a single CPU core (ProfileNet $\sim$15 ms, LSTM $\sim$14 ms, CNN-1D $\sim$16 ms, CNN-DeepONet $\sim$16 ms, Transformer $\sim$19 ms), making them suitable for both offline batch processing and potential real-time applications. The diagnostic-optimal ensemble (CNN-based $T_e$ + Transformer-based $n_e$ + LSTM-based $T_i$, 66K+136K+76K parameters) runs under 50 ms combined.
+\textbf{Automation and robustness.} Replacing the seven-step pipeline with a single forward pass removes the main scalability bottleneck: every mtanh fit must currently be checked by eye, and the pedestal least-squares optimization occasionally fails or converges to non-physical solutions that must be identified manually. The NN pipeline needs no such inspection---its output is smooth, positive, and (after the PCHIP step) monotone by construction, even for inputs outside the training distribution, so failures degrade gracefully rather than catastrophically. Invalid or missing diagnostic channels are handled by the same masking used in training, with no code-branch changes, and the scripted training pipeline allows the models to be periodically retrained as new campaigns accumulate. These properties matter at EAST's throughput of thousands of discharges per campaign, where manual inspection is the current rate-limiting step.
+
+\textbf{An acceptance-band criterion.} To give the qualitative comparison of Figure~\ref{fig:hmode} a quantitative reading, we introduce a data-driven acceptance band around the mtanh reference: for each time point, the band half-width is the local median of $|y_{\text{scatter}} - y_{\text{mtanh}}|$ over the diagnostic channels (binned in $\rho$, floored at 0.05 in profile units), so the band represents the intrinsic dispersion of the diagnostic around the reference rather than an arbitrary tolerance. A fitted curve is considered acceptable where it lies inside this band. Table~\ref{tab:band} reports the mean in-band fraction over all test points. The evaluation reproduces the MAE rankings of Table~\ref{tab:metrics}---CNN-1D and Transformer lead for Te, and LSTM (tied with CNN-DeepONet) for $T_i$, while Transformer's weakness on $n_e$ is stark (10\% in-band)---while adding an interpretable, per-profile acceptance criterion applicable to every discharge in bulk processing without human inspection. The representative points shown in Figure~\ref{fig:hmode} were additionally screened by an automated quality check (non-finite values, non-monotone spikes, and far-outside-band deviations), so no obviously anomalous curves appear in the figure.
+
+\begin{table}[htbp]
+\centering\footnotesize
+\caption{Acceptance-band evaluation: mean in-band fraction (\% $\pm$ std) of the fitted profile inside the scatter-derived band around the mtanh reference, over all test time points. Best per row in \textbf{bold}.}
+\label{tab:band}
+\begin{tabular}{l c c c c c}
+\toprule
+\textbf{Diag.} & \textbf{ProfileNet} & \textbf{LSTM} & \textbf{CNN-1D} & \textbf{CNN-DeepONet} & \textbf{Transformer} \\
+\midrule
+Te & 58.8$\pm$19.3 & 65.4$\pm$17.4 & \textbf{67.4$\pm$22.8} & 60.3$\pm$24.4 & 66.8$\pm$24.0 \\
+$n_e$ & 53.1$\pm$18.6 & 48.3$\pm$15.4 & \textbf{56.5$\pm$7.8} & 36.3$\pm$11.9 & 10.4$\pm$13.9 \\
+$T_i$ & 72.9$\pm$27.0 & \textbf{78.3$\pm$26.0} & 46.7$\pm$18.0 & 78.3$\pm$16.5 & 71.8$\pm$25.8 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 % ===========================================================================
 % 4. Discussion
@@ -304,15 +380,24 @@ All five architectures achieve inference under $\sim$20 ms on a single CPU core 
 
 \subsection{Architecture as Regularization}
 
-The two sides of the ablation in Table~\ref{tab:ablation} differ in one structural point. In a DeepONet, the branch network only picks the coefficients $b_k$; the output must stay in the span of the trunk's smooth basis functions $\{t_k(\rho)\}$. High-frequency oscillations are excluded by construction, much like the smoothness prior in Gaussian-process profile fits~\cite{gpr_profiles,gpr_review}, but without any tuning parameter. CNN-1D's decoder, by contrast, produces independent outputs at each $\rho_i$; without explicit penalties, nothing prevents non-physical profiles. The same mechanism explains why the trunk helps sparse diagnostics (TXCS, 5--15 points) but not dense ones (TS, 20--30 points): where channels are dense, local continuity is already determined by the data and the convolutional decoder's locality suffices; where they are sparse, the basis-function subspace acts as a prior that fills the gaps between channels. When EAST data are processed in bulk, nobody can inspect every output; the guarantee that DeepONet profiles cannot oscillate wildly is then the main practical advantage.
+The ablation in Table~\ref{tab:ablation} shows that the branch-trunk structure and the physics loss are not interchangeable regularizers. In a DeepONet, the branch network only picks the coefficients $b_k$; the output must stay in the span of the trunk's smooth basis functions $\{t_k(\rho)\}$, so high-frequency oscillations are excluded by construction, much like the smoothness prior in Gaussian-process profile fits~\cite{gpr_profiles,gpr_review}, but without any tuning parameter. For the static encoders (ProfileNet's max-pooling, Transformer's self-attention) this structural smoothness alone suffices---removing the physics penalties even helps slightly. CNN-1D's decoder, by contrast, produces independent outputs at each $\rho_i$; without explicit penalties, nothing prevents non-physical profiles. LSTM occupies an intermediate but informative position: it shares the trunk, so its outputs are smooth by construction, yet removing the penalties still degrades it (+18.8\%), because the recurrent branch is free to select large, noise-fitting coefficient combinations. The trunk constrains the \textit{form} of the output; the physics penalties additionally constrain the \textit{coefficient dynamics} learned by the branch---and only some encoders need the latter. The per-constraint ablation (Table~\ref{tab:ablation_pc}) confirms this decomposition term by term: the smoothness penalty is what CNN-1D's decoder cannot do without, whereas LSTM needs the full set of shape constraints. The same mechanism explains why the trunk helps sparse diagnostics (TXCS, 5--15 points) but not dense ones (TS, 20--30 points): where channels are dense, local continuity is already determined by the data and the convolutional decoder's locality suffices; where they are sparse, the basis-function subspace acts as a prior that fills the gaps between channels. When EAST data are processed in bulk, nobody can inspect every output; the guarantee that DeepONet profiles cannot oscillate wildly is then the main practical advantage.
 
 \subsection{Diagnostic-Architecture Matching}
 
-Table~\ref{tab:metrics} shows that no single architecture is optimal across all three diagnostics. We attribute this to how the three diagnostics sample space, not to differences in model capacity. TS gives 20--25 dense, evenly spaced channels, and CNN-1D's local kernels exploit that locality. Refl samples $n_e$ at a different set of $\rho$ positions, where Transformer's global self-attention captures the overall shape better. TXCS gives only 5--15 sparse, irregularly placed points, and there BiLSTM's gated sequence modeling is the most robust. The CNN-DeepONet control isolates the decoder's contribution directly: for sparse TXCS data, swapping CNN-1D's convolutional decoder for the shared trunk cuts $T_i$ MAE by 42\%; for dense TS/Refl data the trunk yields no improvement. The trunk's smoothing, then, matters for sparse inputs and is redundant where local continuity already holds. In practice we recommend a diagnostic-matched ensemble (CNN-based $T_e$ + Transformer-based $n_e$ + LSTM-based $T_i$, combined inference $<$50 ms); this reaches the best accuracy per diagnostic without asking for one universal architecture.
+Table~\ref{tab:metrics} shows that no single architecture is optimal across all three diagnostics. We attribute this to how the three diagnostics sample space, not to differences in model capacity. TS gives 20--25 dense, evenly spaced channels, and CNN-1D's local kernels exploit that locality. Refl samples $n_e$ on an irregular, edge-concentrated grid of $\rho$ positions, where ProfileNet's permutation-invariant set pooling is the most robust. TXCS gives only 5--15 sparse, irregularly placed points, and there BiLSTM's gated sequence modeling is the most robust. The CNN-DeepONet control isolates the decoder's contribution directly: for sparse TXCS data, swapping CNN-1D's convolutional decoder for the shared trunk cuts $T_i$ MAE by 50\%; for dense TS/Refl data the trunk yields no improvement. The slight degradation on the dense diagnostics (Te 0.337$\to$0.391 keV, $n_e$ 0.063$\to$0.075) suggests that the trunk's 128-basis subspace, combined with the positivity-preserving Softplus output, slightly over-smooths the sharp pedestal features that dense local data resolve---the price of the same structural guarantee that pays off for sparse inputs. A spectral analysis of the 128 trained trunk basis functions quantifies this: every basis function is dominated by wavenumbers below 3 cycles per unit $\rho$ (median 1; Figure~\ref{fig:trunk}), so the DeepONet output space cannot represent features sharper than the pedestal scale---the structural smoothness that excludes oscillations is at the same time why sharp dense-data features are slightly smoothed away. The trunk's smoothing, then, matters for sparse inputs and is redundant (mildly costly) where local continuity already holds.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{paper_results/figures/fig_trunk_spectrum.png}
+\caption{Spatial-frequency content of the shared CoordDecoder: (a) six example trunk basis functions $b_k(\rho)$; (b) histogram of the dominant wavenumber (FFT peak) of all 128 basis functions. All bases are dominated by wavenumbers $\leq 3$ cycles per unit $\rho$ (median 1), quantifying the structural smoothness of the DeepONet output space.}
+\label{fig:trunk}
+\end{figure}
+
+In practice we recommend a diagnostic-matched ensemble (CNN-based $T_e$ + ProfileNet-based $n_e$ + LSTM-based $T_i$, combined inference $<$50 ms); this reaches the best accuracy per diagnostic without asking for one universal architecture.
 
 \subsection{Limitations and Outlook}
 
-Several limitations should be noted. (1) $T_i$ training data is sparse ($\sim$148 vs. $\sim$342 for $T_e$) due to limited TXCS coverage in pre-2023 campaigns; the dual-encoder design partially compensates, but more data would benefit all architectures. (2) The NN models are trained with mtanh-fitted profiles as labels. A concept-validation experiment confirmed that direct scatter-MSE training works as well, but both approaches are $\sim$35\% less accurate than mtanh's self-consistency. The NN models are therefore ``fast approximations to mtanh,'' not replacements. (3) ONETWO transport validation was prevented by ZFIT atomic physics incompatibility. (4) Test shots are limited to the 2024 campaign (6,405-shot gap from training data), with only 6 pure L-mode time points. (5) Unlike GPR methods~\cite{gpr_profiles,gpr_review}, the current models lack uncertainty quantification, which could be addressed via Monte Carlo Dropout or Deep Ensemble methods.
+Several limitations should be noted. (1) $T_i$ training data is sparse ($\sim$148 vs. $\sim$342 for $T_e$) due to limited TXCS coverage in pre-2023 campaigns; the dual-encoder design partially compensates, but more data would benefit all architectures. (2) The NN models are trained with mtanh-fitted profiles as labels. A concept-validation experiment on the Te test points showed that direct scatter-MSE training yields slightly worse fit-to-scatter accuracy than mtanh-label training (mean MAE 0.919 vs. 0.894 keV) and, as expected, a worse reproduction of the mtanh reference; both approaches show 28--32\% higher MAE against the raw diagnostic points than the mtanh fit itself (0.698 keV). The NN models are therefore ``fast approximations to mtanh,'' not replacements. (3) ONETWO transport validation was prevented by ZFIT atomic physics incompatibility. (4) Test shots span the 2024--2025 campaigns (a 6,405-shot gap from training data), with 10 L-mode time points; the added L-mode discharge 156900 lacks TXCS data ($T_i$ not evaluated on it), and its $H_{98}$/EFIT coverage ends before the diagnostic times, so its mode is assigned from the last available $H_{98}$ value and its $\rho$ mapping uses the last available equilibrium (up to 6 s earlier). The 2025 shot 158500 has no $H_{98}$ data (mode unknown), and three of its time points were excluded because the mtanh reference failed; Refl/TXCS coverage is incomplete on the 2025 shots, limiting their per-diagnostic sample counts (Table~\ref{tab:metrics}). (5) Unlike GPR methods~\cite{gpr_profiles,gpr_review}, the current models lack uncertainty quantification, which could be addressed via Monte Carlo Dropout or Deep Ensemble methods.
 
 Neural operators are an active direction in fusion plasma modeling. Fourier Neural Operators have been demonstrated as plasma surrogates achieving multi-order-of-magnitude speedups~\cite{fno_plasma}, DeepONet architectures have been applied to equilibrium reconstruction~\cite{deeponet_equilibrium}, PINNs have been used for tokamak inverse problems~\cite{pinn_tokamak,pinn_east}, and neural network surrogates for kinetic EFIT have achieved real-time capable speeds~\cite{nn_efit_surrogate}. Combined with the present work on profile fitting, these approaches collectively suggest a pathway toward fully ML-driven plasma analysis workflows.
 
@@ -321,18 +406,18 @@ Neural operators are an active direction in fusion plasma modeling. Fourier Neur
 % ===========================================================================
 \section{Conclusion}
 
-We have presented a DeepONet-based neural network framework for Thomson Scattering profile fitting on EAST, replacing the traditional seven-step mtanh pipeline with a single 14 ms forward pass. Five architectures were systematically compared on 300 test profiles spanning L-mode to strong H-mode conditions: four encoder variants sharing a common CoordDecoder, plus a pure CNN-1D control without the branch-trunk structure.
+We have presented a DeepONet-based neural network framework for Thomson Scattering profile fitting on EAST, replacing the traditional seven-step mtanh pipeline with a single 14 ms forward pass. Five architectures were systematically compared on 89 unique test profiles (33 time points across 7 unseen 2024--2025 shots, 445 NN profile predictions) spanning L-mode to strong H-mode conditions: four encoder variants sharing a common CoordDecoder, plus a pure CNN-1D control without the branch-trunk structure.
 
 Key findings include:
 
 \begin{enumerate}
-    \item \textbf{Fitting accuracy}: NN methods achieve MAE of $T_e = 0.36$--$0.53$ keV, $n_e = 0.05$--$0.11 \times 10^{19}$ m$^{-3}$, and $T_i = 0.07$--$0.14$ keV relative to mtanh, with smooth temporal trajectories and high core-peakedness correlation ($r > 0.95$).
+    \item \textbf{Fitting accuracy}: NN methods achieve MAE of $T_e = 0.34$--$0.49$ keV, $n_e = 0.06$--$0.11 \times 10^{19}$ m$^{-3}$, and $T_i = 0.07$--$0.15$ keV relative to mtanh, with high core-peakedness correlation ($r > 0.95$) across all test time points.
 
-    \item \textbf{Architecture matters more than loss design}: Ablation experiments show the branch-trunk dot product acts as a regularizer in its own right: removing the physics constraints helps the DeepONet models and hurts CNN-1D by 30.9\%. For scientific ML, that is a practical lesson about architecture selection.
+    \item \textbf{Architecture matters more than loss design}: Ablation experiments show the branch-trunk dot product acts as a regularizer for static encoders: removing the physics constraints improves ProfileNet ($-$10.9\%) and Transformer ($-$16.7\%) but degrades CNN-1D (+32.5\%) and LSTM (+18.8\%). For scientific ML, that is a practical lesson about matching architecture and loss to the encoder family.
 
-    \item \textbf{Diagnostic-architecture matching}: No single encoder is optimal for all diagnostics. The recommended deployment ensemble (CNN-based $T_e$ + Transformer-based $n_e$ + LSTM-based $T_i$) reflects intrinsic differences in diagnostic spatial sampling patterns. A controlled CNN-DeepONet variant confirms that the trunk decoder's regularization is diagnostic-specific: it improves sparse TXCS $T_i$ by 42\% while offering no benefit for dense TS/Refl diagnostics.
+    \item \textbf{Diagnostic-architecture matching}: No single encoder is optimal for all diagnostics. The recommended deployment ensemble (CNN-based $T_e$ + ProfileNet-based $n_e$ + LSTM-based $T_i$) reflects intrinsic differences in diagnostic spatial sampling patterns. A controlled CNN-DeepONet variant confirms that the trunk decoder's regularization is diagnostic-specific: it improves sparse TXCS $T_i$ by 50\% while offering no benefit for dense TS/Refl diagnostics.
 
-    \item \textbf{Downstream impact}: LHW current drive calculations using NN-fitted profiles differ from mtanh by $\sim$24\%, demonstrating that profile differences propagate measurably through physics models.
+    \item \textbf{Engineering value}: the NN pipeline removes manual inspection and per-case optimizer failures, runs at uniform deterministic 14--19 ms latency ($\sim$5$\times$ faster than the median mtanh $T_e$ fit), degrades gracefully under missing or invalid channels, and pairs with a data-driven acceptance-band criterion (Table~\ref{tab:band}) that flags unacceptable fits automatically---a practical basis for bulk-processing thousands of discharges per campaign without human intervention.
 
     \item \textbf{Positioning}: The NN models are fast, automated approximations to mtanh, not replacements for its accuracy. Their value is operational: thousands of discharges can be processed without manual intervention, at some cost in fitting precision relative to mtanh.
 \end{enumerate}
@@ -344,7 +429,7 @@ Future work will focus on: (a) expanding $T_i$ and L-mode training data with 202
 % ===========================================================================
 \section*{Acknowledgments}
 
-The authors thank the EAST team for diagnostic data access and operational support. This work was supported by [funding information to be added].
+The authors thank the EAST team for diagnostic data access and operational support. This work is supported by the National Natural Science Foundation of China under Grant No. 12135015, and the National MCF Energy R\&D Program under Grant No. 2025YFE03050001.
 
 % ===========================================================================
 % Appendix
@@ -353,7 +438,7 @@ The authors thank the EAST team for diagnostic data access and operational suppo
 
 \begin{table}[htbp]
 \centering\footnotesize
-\caption{Mean relative error (MeanRel\% $\pm$ std) of NN methods relative to the mtanh baseline, by diagnostic and plasma mode (H: 8 time points; L: 6 time points). MeanRel\% is dominated by the low-value edge region ($\rho \to 1$), where small absolute deviations produce large relative errors; the H-mode and L-mode rows show that relative accuracy is comparable across modes despite the higher absolute H-mode MAE in Table~\ref{tab:metrics}. Best value in each row is \textbf{bold}.}
+\caption{Mean relative error (MeanRel\% $\pm$ std) of NN methods relative to the mtanh baseline, by diagnostic and plasma mode (H: 14 time points; L: 10 time points). MeanRel\% is dominated by the low-value edge region ($\rho \to 1$), where small absolute deviations produce large relative errors. The L-mode Te rows are inflated by the newly added low-$T_e$ points of shot 156900 (core $T_e$ 0.2--1.1 keV), whose edge values approach zero and make relative error ill-conditioned; on the original four shots the L-mode Te errors were 22--30\%, below the expanded H-mode range of 37--51\%. Best value in each row is \textbf{bold}.}
 \label{tab:meanrel}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{c c | c c c c c}
@@ -361,35 +446,38 @@ The authors thank the EAST team for diagnostic data access and operational suppo
 \textbf{Diag.} & \textbf{Mode} & \textbf{ProfileNet} & \textbf{LSTM} & \textbf{CNN-1D} & \textbf{CNN-DeepONet} & \textbf{Transformer} \\
 \midrule
 \multirow{2}{*}{Te (keV)}
-    & H     & 46.2$\pm$18.1 & \textbf{33.4$\pm$7.1} & 42.9$\pm$14.9 & 57.3$\pm$19.3 & 50.8$\pm$20.9 \\
-    & L     & 28.1$\pm$15.8 & 25.9$\pm$10.6 & 28.9$\pm$11.2 & 29.5$\pm$7.5 & \textbf{21.7$\pm$7.0} \\
+    & H     & 48.3$\pm$19.5 & \textbf{37.3$\pm$13.1} & 38.8$\pm$12.6 & 50.7$\pm$18.5 & 46.1$\pm$17.4 \\
+    & L     & 97.2$\pm$130.2 & 84.1$\pm$94.8 & \textbf{43.5$\pm$25.3} & 47.6$\pm$34.5 & 49.7$\pm$50.7 \\
 \midrule
 \multirow{2}{*}{$n_e$ ($10^{19}$)}
-    & H     & \textbf{3.4$\pm$0.9} & 3.9$\pm$1.4 & 3.5$\pm$1.6 & 4.2$\pm$1.1 & 6.6$\pm$1.2 \\
-    & L     & \textbf{2.8$\pm$1.0} & 2.9$\pm$0.4 & 3.4$\pm$1.1 & 3.7$\pm$1.5 & 5.0$\pm$1.6 \\
+    & H     & 3.2$\pm$0.8 & 3.4$\pm$1.3 & \textbf{3.1$\pm$1.4} & 4.1$\pm$1.0 & 6.1$\pm$1.3 \\
+    & L     & \textbf{3.5$\pm$1.3} & 3.9$\pm$1.5 & 3.5$\pm$0.9 & 4.0$\pm$1.3 & 6.2$\pm$2.1 \\
 \midrule
 \multirow{2}{*}{$T_i$ (keV)}
-    & H     & 15.9$\pm$4.6 & \textbf{13.2$\pm$2.6} & 14.5$\pm$2.7 & 13.6$\pm$2.1 & 15.5$\pm$5.9 \\
-    & L     & 12.5$\pm$8.3 & 9.1$\pm$4.0 & 21.6$\pm$2.5 & 10.1$\pm$4.2 & \textbf{8.3$\pm$1.8} \\
+    & H     & 15.6$\pm$4.8 & 14.3$\pm$6.8 & 19.4$\pm$9.8 & \textbf{12.6$\pm$3.1} & 15.3$\pm$4.1 \\
+    & L     & 12.5$\pm$8.3 & \textbf{9.1$\pm$4.0} & 21.3$\pm$2.8 & 10.1$\pm$4.2 & 9.5$\pm$3.8 \\
 \bottomrule
 \end{tabular}%
 }
 \end{table}
 
 % ===========================================================================
-% Statements (IOP/PST requirements)
+% Statements (Elsevier/FED requirements)
 % ===========================================================================
-\section*{Data availability statement}
+\section*{CRediT authorship contribution statement}
+
+\textbf{C.Y. Hu}: Methodology, Software, Formal analysis, Writing -- original draft. \textbf{Q. Zang}: Supervision, Resources, Writing -- review \& editing.
+
+\section*{Declaration of competing interest}
+
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.
+
+\section*{Data availability}
 
 The data that support the findings of this study are available from the corresponding author upon reasonable request. EAST experimental data are managed by the Institute of Plasma Physics, Chinese Academy of Sciences (ASIPP), Hefei, China.
 
-\section*{Conflict of interest}
-
-The authors declare no conflicts of interest.
-
-\section*{Author contributions}
-
-C.Y. Hu: methodology, software, formal analysis, writing---original draft. Q. Zang: supervision, resources, writing---review and editing.
+\section*{Declaration of generative AI and AI-assisted technologies in the writing process}
+During the preparation of this work the authors used Claude (Anthropic) in order to assist with drafting, language editing, and improving the readability of the manuscript. After using this tool, the authors reviewed and edited the content as needed and take full responsibility for the content of the publication.
 
 % ===========================================================================
 % Bibliography (PST: numbered in order of first citation)
@@ -409,7 +497,7 @@ Zhu Y X, Zang Q, Chu W \textit{et al} 2024 Preliminary results and analysis of a
 St John H E \textit{et al} 1994 TRANSP and ONETWO \textit{Proc. 15th Int. Conf. on Plasma Physics and Controlled Nuclear Fusion Research} (Seville, 1994) vol 3 (Vienna: IAEA) p 603
 
 \bibitem{mtanh_groebner}
-Groebner R J, Baker D R, Burrell K H \textit{et al} 2001 Progress in quantifying the edge physics of the H-mode regime in DIII-D \textit{Nucl. Fusion} \textbf{41} 1789
+Groebner R J, Baker D R, Burrell K H \textit{et al} 2001 Progress in quantifying the edge physics of the H-mode regime in DIII-D \textit{Nucl. Fusion} \textbf{41} 1789 \url{https://doi.org/10.1088/0029-5515/41/12/306}
 
 \bibitem{gpr_profiles}
 Chilenski M A, Greenwald M, Marzouk Y, Howard N T, White A E \textit{et al} 2015 Improved profile fitting and quantification of uncertainty in experimental measurements of impurity transport coefficients using Gaussian process regression \textit{Nucl. Fusion} \textbf{55} 023012
@@ -439,22 +527,16 @@ Karniadakis G E, Kevrekidis I G, Lu L \textit{et al} 2021 Physics-informed machi
 Qi C R, Su H, Mo K and Guibas L J 2017 PointNet: deep learning on point sets for 3D classification and segmentation \textit{Proc. IEEE Conf. on Computer Vision and Pattern Recognition} (Honolulu, HI) pp 652--60
 
 \bibitem{lstm}
-Hochreiter S and Schmidhuber J 1997 Long short-term memory \textit{Neural Comput.} \textbf{9} 1735
+Hochreiter S and Schmidhuber J 1997 Long short-term memory \textit{Neural Comput.} \textbf{9} 1735 \url{https://doi.org/10.1162/neco.1997.9.8.1735}
 
 \bibitem{transformer}
 Vaswani A, Shazeer N, Parmar N \textit{et al} 2017 Attention is all you need \textit{Adv. Neural Inf. Process. Syst.} \textbf{30} 5998
-
-\bibitem{lhcd_east}
-Baek S, Li M, Wallace G, Bonoli P \textit{et al} 2021 Impact of lithium wall conditioning and wave-frequency on high density lower hybrid current drive experiment on EAST \textit{Nucl. Mater. Energy} \textbf{26} 100955
-
-\bibitem{lh_pdi_east}
-Li G, Zhou T, Li M, Ding B \textit{et al} 2024 The onset of parametric decay of lower hybrid waves during lower hybrid current drive experiments on Experimental Advanced Superconducting Tokamak \textit{Nucl. Fusion} \textbf{64} 126008
 
 \bibitem{fno_plasma}
 Gopakumar V, Pamela S, Zanisi L, Li Z \textit{et al} 2024 Plasma surrogate modelling using Fourier neural operators \textit{Nucl. Fusion} \textbf{64} 056025
 
 \bibitem{deeponet_equilibrium}
-Luo Y H \textit{et al} 2024 Real-time plasma equilibrium reconstruction using physics-informed DeepONet on SUNIST-2 \textit{Proc. IAEA Fusion Energy Conf.} contribution 36296
+Luo Y H, Zhang Y F, Wang B B \textit{et al} 2025 A physics-informed neural network for real-time, data-efficient plasma equilibrium reconstruction in SUNIST-2 \textit{Proc. 30th IAEA Fusion Energy Conf.} contribution 36296 (non peer-reviewed conference contribution)
 
 \bibitem{pinn_tokamak}
 Rossi R, Gelfusa M, Murari A \textit{et al} 2023 On the potential of physics-informed neural networks to solve inverse problems in tokamaks \textit{Nucl. Fusion} \textbf{63} 126059

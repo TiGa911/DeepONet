@@ -139,27 +139,27 @@ ARCHITECTURE_TABLE = [
     # (Model, Params, Te_MAE, ne_MAE, Ti_MAE, Architecture)
     ('ProfileNet',    67000, 0.493, 0.056, 0.084, 'SetEncoder + CoordDecoder'),
     ('LSTM',          76000, 0.362, 0.058, 0.070, 'BiLSTM + CoordDecoder'),
-    ('CNN-1D',        66000, 0.337, 0.063, 0.144, 'Pure ResNet (no DeepONet)'),
+    ('CNN-1D',        66000, 0.337, 0.063, 0.145, 'Pure ResNet (no DeepONet)'),
     ('CNN-DeepONet',  79000, 0.391, 0.075, 0.072, 'CNN encoder + CoordDecoder'),
-    ('Transformer',  136000, 0.372, 0.110, 0.081, 'TransformerEncoder + CoordDecoder'),
+    ('Transformer',  136000, 0.378, 0.110, 0.086, 'TransformerEncoder + CoordDecoder'),
 ]
 
 # V5 H-mode 测试集指标（14 时间点）
 ARCHITECTURE_TABLE_H = [
     ('ProfileNet',    67000, 0.519, 0.056, 0.090, 'SetEncoder + CoordDecoder'),
     ('LSTM',          76000, 0.423, 0.058, 0.074, 'BiLSTM + CoordDecoder'),
-    ('CNN-1D',        66000, 0.492, 0.060, 0.125, 'Pure ResNet (no DeepONet)'),
+    ('CNN-1D',        66000, 0.492, 0.060, 0.126, 'Pure ResNet (no DeepONet)'),
     ('CNN-DeepONet',  79000, 0.562, 0.071, 0.066, 'CNN encoder + CoordDecoder'),
-    ('Transformer',  136000, 0.512, 0.112, 0.080, 'TransformerEncoder + CoordDecoder'),
+    ('Transformer',  136000, 0.514, 0.112, 0.085, 'TransformerEncoder + CoordDecoder'),
 ]
 
 # V5 L-mode 测试集指标（10 时间点，排除 unknown）
 ARCHITECTURE_TABLE_L = [
     ('ProfileNet',    67000, 0.298, 0.058, 0.073, 'SetEncoder + CoordDecoder'),
     ('LSTM',          76000, 0.224, 0.063, 0.046, 'BiLSTM + CoordDecoder'),
-    ('CNN-1D',        66000, 0.206, 0.068, 0.150, 'Pure ResNet (no DeepONet)'),
+    ('CNN-1D',        66000, 0.205, 0.068, 0.153, 'Pure ResNet (no DeepONet)'),
     ('CNN-DeepONet',  79000, 0.199, 0.071, 0.054, 'CNN encoder + CoordDecoder'),
-    ('Transformer',  136000, 0.185, 0.110, 0.041, 'TransformerEncoder + CoordDecoder'),
+    ('Transformer',  136000, 0.165, 0.110, 0.050, 'TransformerEncoder + CoordDecoder'),
 ]
 
 # === 原始版本（保留参考）===

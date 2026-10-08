@@ -102,19 +102,20 @@ def main():
                 cells.append(f'{mu:>8.3f}{d:>+6.0f}%')
         print(f'{label:>10s} | ' + ' | '.join(cells))
 
-    # ---- 图：各约束的 Δ% 按架构分组 ----
+    # ---- 图：各约束的 Δ% 按架构分组（仅含 4 个有对照模型的架构）----
+    plot_methods = [m for m in NN_METHODS if on[m] is not None]
     fig, ax = plt.subplots(figsize=(9, 4.5), dpi=300)
-    x = np.arange(len(NN_METHODS))
+    x = np.arange(len(plot_methods))
     width = 0.18
     colors = {'mono_off': '#E63946', 'bdy_off': '#2A9D8F',
               'smooth_off': '#457B9D', 'log_off': '#F4A261', 'all_off': '#555555'}
     for i, label in enumerate(CONFIGS + ['all_off']):
-        deltas = [((mean_of(label, m) or 0) - on[m]) / on[m] * 100 for m in NN_METHODS]
+        deltas = [((mean_of(label, m) or 0) - on[m]) / on[m] * 100 for m in plot_methods]
         ax.bar(x + (i - 2) * width, deltas, width, label=label,
                color=colors[label], alpha=0.9)
     ax.axhline(0, color='black', lw=0.8)
     ax.set_xticks(x)
-    ax.set_xticklabels([METHOD_SPECS[m]['label'] for m in NN_METHODS])
+    ax.set_xticklabels([METHOD_SPECS[m]['label'] for m in plot_methods])
     ax.set_ylabel('Te MAE change vs physics-on (%)')
     ax.set_title('Per-constraint ablation (Te): removing one physics term at a time')
     ax.legend(ncol=5, fontsize=7, loc='upper left')

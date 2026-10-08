@@ -55,7 +55,13 @@ class TransformerEncoder(nn.Module):
             d_model=hidden, nhead=num_heads, dim_feedforward=ffn_dim,
             dropout=dropout, activation='gelu', batch_first=True,
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        # === 修改版（2026-10-08）：禁用嵌套张量快速路径，保证 CPU 推理确定性 ===
+        # 原始版本（保留参考）：
+        # self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        # 原因：torch 2.x 默认 enable_nested_tensor=True，在带 padding mask 的
+        # CPU 推理中非确定（同一输入三次推理 max|Δ|≈0.8 keV），见论文计划 §十五。
+        self.transformer = nn.TransformerEncoder(
+            encoder_layer, num_layers=num_layers, enable_nested_tensor=False)
         self.hidden = hidden
         self.max_len = max_len
 
@@ -91,9 +97,15 @@ class TransformerEncoder(nn.Module):
             sort_idx = torch.argsort(pts[:, 0])  # sort by rho
             pts = pts[sort_idx]
 
-            # Subsample long sequences to max_len (random subset, keeps first/last)
+            # Subsample long sequences to max_len (keeps first/last)
             if n > self.max_len:
-                mid = torch.randperm(n - 2, device=x.device)[:self.max_len - 2] + 1
+                # === 修改版（2026-10-08）：确定性等间隔抽样，修复推理非确定性 ===
+                # 原始版本（保留参考）：
+                # mid = torch.randperm(n - 2, device=x.device)[:self.max_len - 2] + 1
+                # 原因：原随机抽样在推理时每次抽取不同通道子集，同一输入输出
+                # 差异达 ~0.8 keV（max_len=35，而 TS 通道数 30-37），见论文计划 §十五。
+                mid = torch.linspace(1, n - 2, self.max_len - 2,
+                                     device=x.device).round().long()
                 keep = torch.cat([torch.zeros(1, device=x.device, dtype=torch.long),
                                   mid,
                                   torch.full((1,), n - 1, device=x.device, dtype=torch.long)])

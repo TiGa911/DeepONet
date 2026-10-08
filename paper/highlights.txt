@@ -4,6 +4,6 @@ NOT included in the manuscript PDF.
 
 1. DeepONet compresses the seven-step mtanh pipeline into one 14 ms forward pass
 2. Five neural architectures benchmarked on 89 unseen EAST profiles (H- and L-mode)
-3. Branch-trunk structure regularizes static encoders: CNN-1D degrades 35.6% without it
+3. Branch-trunk structure regularizes static encoders: CNN-1D degrades 32.5% without it
 4. CNN-DeepONet control isolates decoder: trunk improves sparse Ti by 50%
 5. Diagnostic-matched ensemble (CNN-Te, ProfileNet-ne, LSTM-Ti) enables automation

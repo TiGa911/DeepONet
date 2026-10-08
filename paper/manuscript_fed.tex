@@ -46,9 +46,9 @@ Hefei 230031, China
 
 \begin{abstract}
 \small
-Thomson Scattering (TS) diagnostics on EAST measure electron temperature (Te) and density (ne) at 20--30 spatial channels; reconstructing continuous profiles is a prerequisite for transport and equilibrium analysis. The established modified hyperbolic tangent (mtanh) method relies on diagnostic-specific branches and hand-tuned parameters, limiting scalability to thousands of annual discharges. We propose a DeepONet-based neural network that replaces the seven-step mtanh pipeline with a single 14 ms forward pass, trained on (scattered points, mtanh-fitted profile) pairs from 161 EAST discharges. Five architectures are compared. ProfileNet, BiLSTM, Transformer, and CNN-DeepONet share one CoordDecoder trunk and one physics-constrained loss; a pure CNN-1D acts as a control. On 89 unseen test profiles (7 shots, 33 time points) spanning L-mode to strong H-mode (Te = 0.2--7.2 keV), the networks achieve mean absolute errors of Te = 0.34--0.49 keV, ne = 0.06--0.11 (10\textsuperscript{19} m\textsuperscript{-3}), and Ti = 0.07--0.14 keV relative to the mtanh baseline.
+Thomson Scattering (TS) diagnostics on EAST measure electron temperature (Te) and density (ne) at 20--30 spatial channels; reconstructing continuous profiles is a prerequisite for transport and equilibrium analysis. The established modified hyperbolic tangent (mtanh) method relies on diagnostic-specific branches and hand-tuned parameters, limiting scalability to thousands of annual discharges. We propose a DeepONet-based neural network that replaces the seven-step mtanh pipeline with a single 14 ms forward pass, trained on (scattered points, mtanh-fitted profile) pairs from 161 EAST discharges. Five architectures are compared. ProfileNet, BiLSTM, Transformer, and CNN-DeepONet share one CoordDecoder trunk and one physics-constrained loss; a pure CNN-1D acts as a control. On 89 unseen test profiles (7 shots, 33 time points) spanning L-mode to strong H-mode (Te = 0.2--7.2 keV), the networks achieve mean absolute errors of Te = 0.34--0.49 keV, ne = 0.06--0.11 (10\textsuperscript{19} m\textsuperscript{-3}), and Ti = 0.07--0.15 keV relative to the mtanh baseline.
 
-Ablation shows that removing the physics constraints improves ProfileNet ($-$10.9\%) and Transformer ($-$12.0\%) but degrades CNN-1D (+35.6\%) and LSTM (+18.8\%). The branch--trunk dot product confines outputs to smooth basis combinations---structural regularization for static encoders; the recurrent branch still needs explicit constraints. A per-profile Gaussian-process baseline is more accurate in-sample but $\sim$15$\times$ slower. A controlled CNN-DeepONet variant (CNN encoder plus shared trunk) resolves the confound: the trunk decoder improves Ti substantially (0.144 to 0.072 keV) but not Te or ne. No architecture is best for all diagnostics; we recommend a diagnostic-matched ensemble (CNN-Te + ProfileNet-ne + LSTM-Ti, total inference <50 ms).
+Ablation shows that removing the physics constraints improves ProfileNet ($-$10.9\%) and Transformer ($-$16.7\%) but degrades CNN-1D (+32.5\%) and LSTM (+18.8\%). The branch--trunk dot product confines outputs to smooth basis combinations---structural regularization for static encoders; the recurrent branch still needs explicit constraints. A per-profile Gaussian-process baseline is more accurate in-sample but $\sim$15$\times$ slower. A controlled CNN-DeepONet variant (CNN encoder plus shared trunk) resolves the confound: the trunk decoder improves Ti substantially (0.144 to 0.072 keV) but not Te or ne. No architecture is best for all diagnostics; we recommend a diagnostic-matched ensemble (CNN-Te + ProfileNet-ne + LSTM-Ti, total inference <50 ms).
 
 \end{abstract}
 
@@ -65,7 +65,7 @@ The standard profile fitting method on EAST employs a modified hyperbolic tangen
 
 Machine learning has reached fusion diagnostics as well: Gaussian Process Regression for profile fitting~\cite{gpr_profiles,gpr_review}, Bayesian integrated data analysis~\cite{ida_east}, neural networks for TS temporal super-resolution~\cite{diag2diag}, and CNN-based density profile reconstruction~\cite{lan_cnn_east}. The Deep Operator Network (DeepONet)~\cite{deeponet} is a neural architecture specifically designed to learn mappings between function spaces, separating an operator $G: u \mapsto G(u)$ into a branch network encoding the input function and a trunk network encoding the output domain~\cite{physics_informed_deeponet,pinn_review}. The branch-trunk form has one property we rely on throughout: the output $\hat{y}(\rho) = \sum b_k \cdot t_k(\rho)$ is always a linear combination of smooth basis functions. Non-physical oscillations are excluded by construction, and we treat the architecture itself as \textit{structural regularization} for profile fitting.
 
-In this work, we propose a DeepONet-based neural network that replaces the seven-step mtanh pipeline with a single $\sim$14 ms forward pass. Five architectures are compared---four (ProfileNet (SetEncoder), BiLSTM, Transformer, and CNN-DeepONet) share a common CoordDecoder and physics-constrained loss, while a pure CNN-1D serves as a control group without the branch-trunk structure---enabling a controlled study of architectural inductive biases. Our contributions include: (1) to the best of our knowledge, the first application of DeepONet to EAST TS profile fitting; (2) systematic five-architecture comparison under unified conditions; (3) a controlled CNN-DeepONet variant that resolves the encoder/decoder confound, showing the shared trunk decoder is beneficial for sparse diagnostics (Ti) but not dense ones (Te, ne); (4) ablation experiments showing that the branch-trunk structure regularizes static encoders by itself (without physics constraints ProfileNet and Transformer improve by 11--12\%, while CNN-1D and LSTM degrade by 19--36\%); (5) discovery of a diagnostic-architecture matching pattern reflecting intrinsic differences in diagnostic spatial sampling. In brief, the methodological novelty of this work lies in two intertwined ideas: treating the operator-learning structure itself as a built-in regularizer, and designing the comparison (shared trunk, controlled CNN-DeepONet variant, unified physics-constrained loss) so that this claim is testable rather than assumed.
+In this work, we propose a DeepONet-based neural network that replaces the seven-step mtanh pipeline with a single $\sim$14 ms forward pass. Five architectures are compared---four (ProfileNet (SetEncoder), BiLSTM, Transformer, and CNN-DeepONet) share a common CoordDecoder and physics-constrained loss, while a pure CNN-1D serves as a control group without the branch-trunk structure---enabling a controlled study of architectural inductive biases. Our contributions include: (1) to the best of our knowledge, the first application of DeepONet to EAST TS profile fitting; (2) systematic five-architecture comparison under unified conditions; (3) a controlled CNN-DeepONet variant that resolves the encoder/decoder confound, showing the shared trunk decoder is beneficial for sparse diagnostics (Ti) but not dense ones (Te, ne); (4) ablation experiments---including a per-constraint localization of each physics term---showing that the branch-trunk structure regularizes static encoders by itself (without physics constraints ProfileNet and Transformer improve by 11--17\%, while CNN-1D and LSTM degrade by 19--33\%); (5) discovery of a diagnostic-architecture matching pattern reflecting intrinsic differences in diagnostic spatial sampling. In brief, the methodological novelty of this work lies in two intertwined ideas: treating the operator-learning structure itself as a built-in regularizer, and designing the comparison (shared trunk, controlled CNN-DeepONet variant, unified physics-constrained loss) so that this claim is testable rather than assumed.
 
 % ===========================================================================
 % 2. Method
@@ -195,19 +195,19 @@ Table~\ref{tab:metrics} presents the overall fitting accuracy of the five neural
 \textbf{Diag.} & \textbf{Mode} & \textbf{ProfileNet} & \textbf{LSTM} & \textbf{CNN-1D} & \textbf{CNN-DeepONet} & \textbf{Transformer} \\
 \midrule
 \multirow{3}{*}{Te (keV)}
-    & All   & 0.493$\pm$0.261 & 0.362$\pm$0.211 & \textbf{0.337$\pm$0.261} & 0.391$\pm$0.291 & 0.372$\pm$0.312 \\
-    & H     & 0.519$\pm$0.249 & \textbf{0.423$\pm$0.184} & 0.492$\pm$0.299 & 0.562$\pm$0.328 & 0.512$\pm$0.326 \\
-    & L     & 0.298$\pm$0.206 & 0.224$\pm$0.125 & 0.206$\pm$0.080 & 0.199$\pm$0.063 & \textbf{0.185$\pm$0.073} \\
+    & All   & 0.493$\pm$0.261 & 0.362$\pm$0.211 & \textbf{0.337$\pm$0.261} & 0.391$\pm$0.291 & 0.378$\pm$0.323 \\
+    & H     & 0.519$\pm$0.249 & \textbf{0.423$\pm$0.184} & 0.492$\pm$0.299 & 0.562$\pm$0.328 & 0.514$\pm$0.302 \\
+    & L     & 0.298$\pm$0.206 & 0.224$\pm$0.125 & 0.205$\pm$0.080 & 0.199$\pm$0.063 & \textbf{0.165$\pm$0.087} \\
 \midrule
 \multirow{3}{*}{$n_e$ (10$^{19}$)}
-    & All   & \textbf{0.056$\pm$0.017} & 0.058$\pm$0.018 & 0.063$\pm$0.022 & 0.075$\pm$0.020 & 0.110$\pm$0.024 \\
+    & All   & \textbf{0.056$\pm$0.017} & 0.058$\pm$0.018 & 0.063$\pm$0.023 & 0.075$\pm$0.020 & 0.110$\pm$0.024 \\
     & H     & \textbf{0.056$\pm$0.012} & 0.058$\pm$0.020 & 0.060$\pm$0.028 & 0.071$\pm$0.018 & 0.112$\pm$0.022 \\
     & L     & \textbf{0.058$\pm$0.022} & 0.063$\pm$0.017 & 0.068$\pm$0.021 & 0.071$\pm$0.019 & 0.110$\pm$0.031 \\
 \midrule
 \multirow{3}{*}{$T_i$ (keV)}
-    & All   & 0.084$\pm$0.050 & \textbf{0.070$\pm$0.038} & 0.144$\pm$0.046 & 0.072$\pm$0.042 & 0.081$\pm$0.057 \\
-    & H     & 0.090$\pm$0.048 & 0.074$\pm$0.030 & 0.125$\pm$0.048 & \textbf{0.066$\pm$0.021} & 0.080$\pm$0.043 \\
-    & L     & 0.073$\pm$0.066 & 0.046$\pm$0.028 & 0.150$\pm$0.037 & 0.054$\pm$0.018 & \textbf{0.041$\pm$0.018} \\
+    & All   & 0.084$\pm$0.050 & \textbf{0.070$\pm$0.038} & 0.145$\pm$0.045 & 0.072$\pm$0.042 & 0.086$\pm$0.055 \\
+    & H     & 0.090$\pm$0.048 & 0.074$\pm$0.030 & 0.126$\pm$0.048 & \textbf{0.066$\pm$0.021} & 0.085$\pm$0.040 \\
+    & L     & 0.073$\pm$0.066 & \textbf{0.046$\pm$0.028} & 0.153$\pm$0.034 & 0.054$\pm$0.018 & 0.050$\pm$0.024 \\
 \bottomrule
 \end{tabular}%
 }
@@ -222,7 +222,7 @@ Key observations from Table~\ref{tab:metrics}:
 
     \item \textbf{The CNN-DeepONet control resolves the encoder/decoder confound.} Keeping the CNN encoder fixed and swapping CNN-1D's pure convolutional decoder for the shared CoordDecoder trunk improves $T_i$ sharply (0.144 to 0.072 keV, $-$50\%), while Te (0.337 to 0.391 keV) and $n_e$ (0.063 to 0.075) get slightly worse. The trunk helps exactly where the data are sparse---the 5--15 irregular TXCS channels---and does nothing where they are dense. For TS and Refl the data already fix the local shape, so a convolutional decoder is enough. CNN-1D's $T_i$ weakness is thus a property of its decoder, not its encoder.
 
-    \item \textbf{Transformer excels in L-mode.} Transformer achieves the lowest L-mode MAE for both Te (0.185 keV) and $T_i$ (0.041 keV); these leads are not statistically significant at this sample size (Wilcoxon $p>0.05$), so the finding is suggestive of a genuine advantage of global self-attention on the smoother, less pedestal-dominated L-mode profiles, rather than established.
+    \item \textbf{Transformer excels in L-mode.} Transformer achieves the lowest L-mode Te MAE (0.165 keV) and is statistically tied with LSTM for $T_i$ (0.050 vs. 0.046 keV, Wilcoxon $p=0.84$); its Te lead is not statistically significant at this sample size (Wilcoxon $p>0.05$), so the finding is suggestive of a genuine advantage of global self-attention on the smoother, less pedestal-dominated L-mode profiles, rather than established.
 \end{enumerate}
 
 To separate real differences from sampling noise, we ran paired Wilcoxon signed-rank tests on the per-time-point MAE within each (diagnostic, mode) group. The statistically robust findings are: (i) ProfileNet is significantly worse than LSTM, CNN-1D, and Transformer for Te ($p<0.01$); (ii) CNN-1D is significantly worse than the DeepONet variants for $T_i$ ($p<0.001$); (iii) Transformer is significantly worse than all other architectures for $n_e$ ($p<0.001$); and (iv) the CNN-DeepONet trunk swap improves $T_i$ significantly ($p<0.001$). All remaining rank differences are within sampling noise at the current test-set size.
@@ -311,13 +311,41 @@ To decouple the contributions of the physics-constrained loss function from the 
 \midrule
 ProfileNet (DeepONet)   & 0.493 & 0.439 & \textbf{$-$10.9\%} (improved) \\
 LSTM (DeepONet)         & 0.362 & 0.430 & \textbf{+18.8\%} (degraded) \\
-CNN-1D (no DeepONet)    & 0.337 & 0.457 & \textbf{+35.6\%} (degraded) \\
-Transformer (DeepONet)  & 0.361 & 0.318 & \textbf{$-$12.0\%} (improved) \\
+CNN-1D (no DeepONet)    & 0.337 & 0.446 & \textbf{+32.5\%} (degraded) \\
+Transformer (DeepONet)  & 0.378 & 0.314 & \textbf{$-$16.7\%} (improved) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The ablation results split into three behaviors. The pooling- and attention-based DeepONets improve slightly when the physics constraints are removed (ProfileNet $-10.9\%$, Transformer $-12.0\%$); CNN-1D, which has no branch-trunk structure, degrades the most ($+35.6\%$); and LSTM degrades by $+18.8\%$ despite sharing the same trunk. The mechanical interpretation is deferred to Section 4.1; the immediate practical conclusion is that the branch-trunk structure alone is sufficient regularization for the static encoders (for which the physics terms slightly over-regularize), while the recurrent encoder still depends on the explicit constraints.
+The ablation results split into three behaviors. The pooling- and attention-based DeepONets improve when the physics constraints are removed (ProfileNet $-10.9\%$, Transformer $-16.7\%$); CNN-1D, which has no branch-trunk structure, degrades the most ($+32.5\%$); and LSTM degrades by $+18.8\%$ despite sharing the same trunk. The mechanical interpretation is deferred to Section 4.1; the immediate practical conclusion is that the branch-trunk structure alone is sufficient regularization for the static encoders (for which the physics terms slightly over-regularize), while the recurrent encoder still depends on the explicit constraints.
+
+To localize the contribution of each physics term, we retrained the four architectures with exactly one constraint removed at a time (Table~\ref{tab:ablation_pc}, Figure~\ref{fig:ablation_pc}). The per-constraint results sharpen the three-way picture: (i) LSTM depends on the \textit{combination} of monotonicity, smoothness, and log terms---removing any one of them degrades it by 34--44\%---while the axis-symmetry term is irrelevant ($-1\%$); (ii) CNN-1D depends almost exclusively on the smoothness penalty ($+32\%$), and removing the other three individually leaves it unchanged or slightly improved---without a trunk, the smoothness term is its only guard against oscillations; (iii) for the static encoders the response is mixed term by term: ProfileNet is hurt by every single removal ($+5$--$17\%$) yet improves when all are removed ($-11\%$), while Transformer is hurt only by removing the monotonicity and log terms ($+6\%$ each) and improves when the smoothness or all constraints are removed ($-7\%$/$-17\%$)---a non-additive interaction consistent with the constraints jointly over-regularizing these architectures. The axis-symmetry term $\mathcal{L}_{\text{bdy}}$ is the least important for all four architectures ($-9\%$ to $+5\%$), consistent with the data and the other penalties already enforcing $dT/d\rho|_{\rho=0}\approx 0$.
+
+\begin{table}[htbp]
+\centering\footnotesize
+\caption{Per-constraint ablation (Te): change in mean MAE when a single physics term is removed, relative to the physics-on model (first row: physics-on MAE in keV). Same 33 test time points as Table~\ref{tab:ablation}.}
+\label{tab:ablation_pc}
+\begin{tabular}{l c c c c}
+\toprule
+\textbf{Term removed} & \textbf{ProfileNet} & \textbf{LSTM} & \textbf{CNN-1D} & \textbf{Transformer} \\
+\midrule
+Physics-on MAE (keV) & 0.493 & 0.362 & 0.337 & 0.378 \\
+\midrule
+$\mathcal{L}_{\text{mono}}$ only   & $+17\%$ & \textbf{$+44\%$} & $-1\%$ & $+6\%$ \\
+$\mathcal{L}_{\text{bdy}}$ only    & $+5\%$ & $-1\%$ & $-9\%$ & $-3\%$ \\
+$\mathcal{L}_{\text{smooth}}$ only & $+12\%$ & \textbf{$+44\%$} & \textbf{$+32\%$} & $-7\%$ \\
+$\mathcal{L}_{\log}$ only          & $+10\%$ & $+34\%$ & $-15\%$ & $+6\%$ \\
+All constraints                    & $-11\%$ & $+19\%$ & $+32\%$ & $-17\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{paper_results/figures/fig_ablation_per_constraint.png}
+\caption{Per-constraint ablation (Te): MAE change relative to the physics-on model when one physics term is removed at a time, grouped by architecture. Bars below zero indicate improvement.}
+\label{fig:ablation_pc}
+\end{figure}
 
 \subsection{Engineering Value: Speed, Automation, and Acceptance}
 
@@ -335,9 +363,9 @@ The ablation results split into three behaviors. The pooling- and attention-base
 \toprule
 \textbf{Diag.} & \textbf{ProfileNet} & \textbf{LSTM} & \textbf{CNN-1D} & \textbf{CNN-DeepONet} & \textbf{Transformer} \\
 \midrule
-Te & 58.8$\pm$19.3 & 65.4$\pm$17.4 & \textbf{67.5$\pm$23.0} & 60.3$\pm$24.4 & 67.3$\pm$22.0 \\
+Te & 58.8$\pm$19.3 & 65.4$\pm$17.4 & \textbf{67.4$\pm$22.8} & 60.3$\pm$24.4 & 66.8$\pm$24.0 \\
 $n_e$ & 53.1$\pm$18.6 & 48.3$\pm$15.4 & \textbf{56.5$\pm$7.8} & 36.3$\pm$11.9 & 10.4$\pm$13.9 \\
-$T_i$ & 72.9$\pm$27.0 & \textbf{78.3$\pm$26.0} & 47.3$\pm$18.2 & 78.3$\pm$16.5 & 73.2$\pm$26.5 \\
+$T_i$ & 72.9$\pm$27.0 & \textbf{78.3$\pm$26.0} & 46.7$\pm$18.0 & 78.3$\pm$16.5 & 71.8$\pm$25.8 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -349,7 +377,7 @@ $T_i$ & 72.9$\pm$27.0 & \textbf{78.3$\pm$26.0} & 47.3$\pm$18.2 & 78.3$\pm$16.5 &
 
 \subsection{Architecture as Regularization}
 
-The ablation in Table~\ref{tab:ablation} shows that the branch-trunk structure and the physics loss are not interchangeable regularizers. In a DeepONet, the branch network only picks the coefficients $b_k$; the output must stay in the span of the trunk's smooth basis functions $\{t_k(\rho)\}$, so high-frequency oscillations are excluded by construction, much like the smoothness prior in Gaussian-process profile fits~\cite{gpr_profiles,gpr_review}, but without any tuning parameter. For the static encoders (ProfileNet's max-pooling, Transformer's self-attention) this structural smoothness alone suffices---removing the physics penalties even helps slightly. CNN-1D's decoder, by contrast, produces independent outputs at each $\rho_i$; without explicit penalties, nothing prevents non-physical profiles. LSTM occupies an intermediate but informative position: it shares the trunk, so its outputs are smooth by construction, yet removing the penalties still degrades it (+18.8\%), because the recurrent branch is free to select large, noise-fitting coefficient combinations. The trunk constrains the \textit{form} of the output; the physics penalties additionally constrain the \textit{coefficient dynamics} learned by the branch---and only some encoders need the latter. The same mechanism explains why the trunk helps sparse diagnostics (TXCS, 5--15 points) but not dense ones (TS, 20--30 points): where channels are dense, local continuity is already determined by the data and the convolutional decoder's locality suffices; where they are sparse, the basis-function subspace acts as a prior that fills the gaps between channels. When EAST data are processed in bulk, nobody can inspect every output; the guarantee that DeepONet profiles cannot oscillate wildly is then the main practical advantage.
+The ablation in Table~\ref{tab:ablation} shows that the branch-trunk structure and the physics loss are not interchangeable regularizers. In a DeepONet, the branch network only picks the coefficients $b_k$; the output must stay in the span of the trunk's smooth basis functions $\{t_k(\rho)\}$, so high-frequency oscillations are excluded by construction, much like the smoothness prior in Gaussian-process profile fits~\cite{gpr_profiles,gpr_review}, but without any tuning parameter. For the static encoders (ProfileNet's max-pooling, Transformer's self-attention) this structural smoothness alone suffices---removing the physics penalties even helps slightly. CNN-1D's decoder, by contrast, produces independent outputs at each $\rho_i$; without explicit penalties, nothing prevents non-physical profiles. LSTM occupies an intermediate but informative position: it shares the trunk, so its outputs are smooth by construction, yet removing the penalties still degrades it (+18.8\%), because the recurrent branch is free to select large, noise-fitting coefficient combinations. The trunk constrains the \textit{form} of the output; the physics penalties additionally constrain the \textit{coefficient dynamics} learned by the branch---and only some encoders need the latter. The per-constraint ablation (Table~\ref{tab:ablation_pc}) confirms this decomposition term by term: the smoothness penalty is what CNN-1D's decoder cannot do without, whereas LSTM needs the full set of shape constraints. The same mechanism explains why the trunk helps sparse diagnostics (TXCS, 5--15 points) but not dense ones (TS, 20--30 points): where channels are dense, local continuity is already determined by the data and the convolutional decoder's locality suffices; where they are sparse, the basis-function subspace acts as a prior that fills the gaps between channels. When EAST data are processed in bulk, nobody can inspect every output; the guarantee that DeepONet profiles cannot oscillate wildly is then the main practical advantage.
 
 \subsection{Diagnostic-Architecture Matching}
 
@@ -380,9 +408,9 @@ We have presented a DeepONet-based neural network framework for Thomson Scatteri
 Key findings include:
 
 \begin{enumerate}
-    \item \textbf{Fitting accuracy}: NN methods achieve MAE of $T_e = 0.34$--$0.49$ keV, $n_e = 0.06$--$0.11 \times 10^{19}$ m$^{-3}$, and $T_i = 0.07$--$0.14$ keV relative to mtanh, with high core-peakedness correlation ($r > 0.95$) across all test time points.
+    \item \textbf{Fitting accuracy}: NN methods achieve MAE of $T_e = 0.34$--$0.49$ keV, $n_e = 0.06$--$0.11 \times 10^{19}$ m$^{-3}$, and $T_i = 0.07$--$0.15$ keV relative to mtanh, with high core-peakedness correlation ($r > 0.95$) across all test time points.
 
-    \item \textbf{Architecture matters more than loss design}: Ablation experiments show the branch-trunk dot product acts as a regularizer for static encoders: removing the physics constraints improves ProfileNet ($-$10.9\%) and Transformer ($-$12.0\%) but degrades CNN-1D (+35.6\%) and LSTM (+18.8\%). For scientific ML, that is a practical lesson about matching architecture and loss to the encoder family.
+    \item \textbf{Architecture matters more than loss design}: Ablation experiments show the branch-trunk dot product acts as a regularizer for static encoders: removing the physics constraints improves ProfileNet ($-$10.9\%) and Transformer ($-$16.7\%) but degrades CNN-1D (+32.5\%) and LSTM (+18.8\%). For scientific ML, that is a practical lesson about matching architecture and loss to the encoder family.
 
     \item \textbf{Diagnostic-architecture matching}: No single encoder is optimal for all diagnostics. The recommended deployment ensemble (CNN-based $T_e$ + ProfileNet-based $n_e$ + LSTM-based $T_i$) reflects intrinsic differences in diagnostic spatial sampling patterns. A controlled CNN-DeepONet variant confirms that the trunk decoder's regularization is diagnostic-specific: it improves sparse TXCS $T_i$ by 50\% while offering no benefit for dense TS/Refl diagnostics.
 
@@ -415,16 +443,16 @@ The authors thank the EAST team for diagnostic data access and operational suppo
 \textbf{Diag.} & \textbf{Mode} & \textbf{ProfileNet} & \textbf{LSTM} & \textbf{CNN-1D} & \textbf{CNN-DeepONet} & \textbf{Transformer} \\
 \midrule
 \multirow{2}{*}{Te (keV)}
-    & H     & 48.3$\pm$19.5 & \textbf{37.3$\pm$13.1} & 39.0$\pm$12.8 & 50.7$\pm$18.5 & 45.1$\pm$19.1 \\
-    & L     & 97.2$\pm$130.2 & 84.1$\pm$94.8 & \textbf{43.3$\pm$24.8} & 47.6$\pm$34.5 & 57.6$\pm$58.8 \\
+    & H     & 48.3$\pm$19.5 & \textbf{37.3$\pm$13.1} & 38.8$\pm$12.6 & 50.7$\pm$18.5 & 46.1$\pm$17.4 \\
+    & L     & 97.2$\pm$130.2 & 84.1$\pm$94.8 & \textbf{43.5$\pm$25.3} & 47.6$\pm$34.5 & 49.7$\pm$50.7 \\
 \midrule
 \multirow{2}{*}{$n_e$ ($10^{19}$)}
     & H     & 3.2$\pm$0.8 & 3.4$\pm$1.3 & \textbf{3.1$\pm$1.4} & 4.1$\pm$1.0 & 6.1$\pm$1.3 \\
     & L     & \textbf{3.5$\pm$1.3} & 3.9$\pm$1.5 & 3.5$\pm$0.9 & 4.0$\pm$1.3 & 6.2$\pm$2.1 \\
 \midrule
 \multirow{2}{*}{$T_i$ (keV)}
-    & H     & 15.6$\pm$4.8 & 14.3$\pm$6.8 & 19.5$\pm$9.7 & \textbf{12.6$\pm$3.1} & 14.6$\pm$4.9 \\
-    & L     & 12.5$\pm$8.3 & 9.1$\pm$4.0 & 21.6$\pm$2.5 & 10.1$\pm$4.2 & \textbf{8.3$\pm$1.8} \\
+    & H     & 15.6$\pm$4.8 & 14.3$\pm$6.8 & 19.4$\pm$9.8 & \textbf{12.6$\pm$3.1} & 15.3$\pm$4.1 \\
+    & L     & 12.5$\pm$8.3 & \textbf{9.1$\pm$4.0} & 21.3$\pm$2.8 & 10.1$\pm$4.2 & 9.5$\pm$3.8 \\
 \bottomrule
 \end{tabular}%
 }
